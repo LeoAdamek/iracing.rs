@@ -1,11 +1,14 @@
 #[macro_use]
 extern crate bitflags;
-
 extern crate winapi;
+extern crate serde;
+extern crate serde_yaml;
 
-use crate::session::Header;
+use crate::session::*;
+use serde_yaml::from_slice as yaml_from_slice;
 use std::ptr::null;
 use std::io::Error;
+use std::slice::from_raw_parts;
 use std::io::Result as IOResult;
 use std::os::windows::raw::HANDLE;
 use winapi::shared::minwindef::LPVOID;
@@ -19,21 +22,20 @@ pub const TELEMETRY_PATH: &'static str = "Local\\IRSDKMemMapFileName";
 pub const UNLIMITED_LAPS: i32 = 32767;
 pub const UNLIMITED_TIME: f32 = 604800.0;
 
-
-pub struct Client {
-    conn: Connection,
-}
-
-impl Client {
-    pub fn new(conn: Connection) -> Client {
-        return Client { conn: conn };
-    }
-
-    pub fn header(&mut self) -> Header {
-        self.conn.header()
-    }
-}
-
+///
+/// iRacing live telemetry and session data connection.
+/// 
+/// Allows retrival of live data fro iRacing.
+/// The data is provided using a shared memory map, allowing the simulator
+/// to deposit data roughly every 16ms to be read.
+/// 
+/// # Examples
+/// 
+/// ```
+/// use iracing::Connection;
+/// 
+/// let _ = Connection::new().expect("Unable to find telemetry data");
+/// ```
 pub struct Connection {
     location: *mut std::ffi::c_void
 }
@@ -70,21 +72,54 @@ impl Connection {
         return Ok(Connection {location: view});
     }
 
-    /**
-     * Read the contents of the memory map
-     */
-    pub fn header (&mut self) -> Header {
+    ///
+    /// Get the data header
+    /// 
+    /// Reads the data header from the shared memory map and returns a copy of the header
+    /// which can be used safely elsewhere.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use iracing::Connection;
+    /// 
+    /// let header = Connection::new().expect("Unable to find telemetry data").header();
+    /// 
+    /// println!("Data Version: {}", header.version);
+    /// ```
+    pub fn header(&mut self) -> Header {
         let raw_header: *const Header = unsafe { std::mem::transmute(self.location) };
         let h: Header = unsafe { *raw_header };
 
         h.clone()
     }
-}
 
-pub fn connect() -> IOResult<Client> {
-    let conn = Connection::new()?;
+    ///
+    /// Get session information
+    /// 
+    /// Get general session information - This data is mostly static and contains
+    /// overall information related to the current or replayed session
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use iracing::Connection;
+    /// 
+    /// match Connection::new().expect("Unable to open session").session_info() {
+    ///     Ok(session) => println!("Track Name: {}", session.weekend_info.track_name),
+    ///     Err(e) => println!("Invalid Session")
+    /// };
+    /// ```
+    pub fn session_info(&mut self) -> serde_yaml::Result<SessionDetails> {
+        let header = self.header();
 
-    return Ok(Client::new(conn));
+        let start = (self.location as usize + header.session_info_offset as usize) as *const u8;
+        let size = header.session_info_length as usize;
+        
+        let data: &[u8] = unsafe { from_raw_parts(start, size) };
+
+        yaml_from_slice(data)
+    }
 }
 
 #[cfg(test)]
@@ -92,18 +127,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_connect() {
-        println!("Opening telemetry at {}", TELEMETRY_PATH);
-        connect().expect("Unable to open telemetry");
-        assert_eq!(1, 1);
+    fn test_header() {
+        let header: Header = Connection::new().expect("Unable to open telemetry").header();
+
+        assert_eq!(header.version, 2);
     }
 
     #[test]
-    fn test_header() {
-        println!("Sampling Telemetry");
-
-        let header: Header = connect().expect("Unable to open telemetry").header();
-
-        assert_eq!(header.version, 2);
+    fn test_session_info() {
+        match Connection::new().expect("Unable to open telemetry").session_info() {
+            Ok(session) => println!("Track: {}", session.weekend_info.track_name),
+            Err(e) => println!("Error: {:?}", e)
+        };
     }
 }

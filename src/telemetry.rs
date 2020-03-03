@@ -4,7 +4,7 @@
  */
 pub struct RawSample {
     pub air_density: f32,                // Air Density (kgm^-3)
-    pub air_pressuer: f32,               // Barometric pressure (inHg)
+    pub air_pressure: f32,               // Barometric pressure (inHg)
     pub air_temperature: f32,            // Air Temperature (deg C)
     pub altitude: f32,                   // Altitude (m)
     pub brake: f32,                      // Brake Input (%)

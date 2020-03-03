@@ -7,7 +7,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'iracing'",
+            "name": "Library Tests",
             "cargo": {
                 "args": [
                     "test",
