@@ -1,33 +1,4 @@
 use serde::{Deserialize, Serialize};
-
-#[derive(Copy, Clone, Debug)]
-#[repr(C)]
-pub struct Header {
-    pub version: i32,              // Telemetry version
-    pub status: i32,               // Status
-    pub tick_rate: i32,            // Tick rate (Hz)
-    pub session_info_version: i32, // Increments each time session info is updated
-    pub session_info_length: i32,  // Length of session info data
-    pub session_info_offset: i32,  // Offset of session info data
-
-    pub n_vars: i32,        // Number of values
-    pub header_offset: i32, // Offset to header variables
-
-    pub n_buffers: i32,     // # of buffers (<= 3 for now)
-    pub buffer_length: i32, // Length per line
-    pub padding: [u32; 2],  // Padding
-
-    pub buffers: [ValueBuffer; 4], // Data buffers
-}
-
-#[derive(Copy, Clone, Debug)]
-#[repr(C)]
-pub struct ValueBuffer {
-    pub ticks: i32,        // Tick count
-    pub offset: i32,       // Offset
-    pub padding: [u32; 2], // (16-byte align) Padding
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SessionDetails {
     #[serde(rename = "WeekendInfo")]
@@ -36,7 +7,7 @@ pub struct SessionDetails {
     #[serde(rename = "SessionInfo")]
     pub session: SessionInfo,
 
-    #[serde(rename="DriverInfo")]
+    #[serde(rename = "DriverInfo")]
     pub drivers: DriverInfo, // Driver information
 }
 
@@ -84,47 +55,46 @@ pub struct WeekendInfo {
     #[serde(rename = "TrackWindDir")]
     pub track_wind_direction: String, // Track wind direction relative to north (rad)
     pub track_fog_level: String, // Track fogginess
-    pub track_cleanup: i32,   // Track cleanup
+    pub track_cleanup: i32,      // Track cleanup
 
     #[serde(rename = "TrackDynamicTrack")]
-    pub track_dynamic: i32,   // Track Dynamic
+    pub track_dynamic: i32, // Track Dynamic
 
     #[serde(rename = "SeriesID")]
-    pub series_id: i32,       // iRacing series ID
+    pub series_id: i32, // iRacing series ID
 
     #[serde(rename = "SeasonID")]
-    pub season_id: i32,       // iRacing season ID
+    pub season_id: i32, // iRacing season ID
 
     #[serde(rename = "SessionID")]
-    pub session_id: i32,      // iRacing session Id
+    pub session_id: i32, // iRacing session Id
 
     #[serde(rename = "SubSessionID")]
-    pub sub_session_id: i32,  // iRacing subsession (split) ID
+    pub sub_session_id: i32, // iRacing subsession (split) ID
 
     #[serde(rename = "LeagueID")]
-    pub league_id: i32,       // iRacing League ID
-    pub official: i8,         // Official Race
-    pub race_week: i32,       // Race  Week Number
-    pub event_type: String,   // Event Type
-    pub category: String,     // Category
-    pub sim_mode: String,     // Sim Mode
-    pub team_racing: i8,        // Is Team Race
-    pub min_drivers: i8,      // Minimum drivers per team
-    pub max_drivers: i8,      // Maximum drivers per team
+    pub league_id: i32, // iRacing League ID
+    pub official: i8,       // Official Race
+    pub race_week: i32,     // Race  Week Number
+    pub event_type: String, // Event Type
+    pub category: String,   // Category
+    pub sim_mode: String,   // Sim Mode
+    pub team_racing: i8,    // Is Team Race
+    pub min_drivers: i8,    // Minimum drivers per team
+    pub max_drivers: i8,    // Maximum drivers per team
 
     #[serde(rename = "DCRuleSet")]
-    pub dc_rule_set: String,  // Driver change rules
+    pub dc_rule_set: String, // Driver change rules
 
     pub qualifier_must_start_race: i8, // Qualifying driver must start race
 
     #[serde(rename = "NumCarClasses")]
     pub n_classes: u32, // Number of classes in the race
-    
     #[serde(rename = "NumCarTypes")]
     pub n_car_types: u32, // Number of car types eligible for the race
 
     #[serde(rename = "WeekendOptions")]
-    pub options: WeekendOptions
+    pub options: WeekendOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -136,25 +106,25 @@ pub struct WeekendOptions {
     pub starting_grid: String,
     pub qualify_scoring: String,
     pub course_cautions: String,
-    pub standing_start: i8, // Standing or Rolling start
-    pub restarts: String, // Race restart rules
-    pub weather_type: String, // Weather type
-    pub skies: String, // Skies
+    pub standing_start: i8,     // Standing or Rolling start
+    pub restarts: String,       // Race restart rules
+    pub weather_type: String,   // Weather type
+    pub skies: String,          // Skies
     pub wind_direction: String, // Wind direction
-    pub wind_speed: String, // Wind Speed
+    pub wind_speed: String,     // Wind Speed
 
     #[serde(rename = "WeatherTemp")]
     pub temperature: String, // Temperature
 
     pub relative_humidity: String, // RH (%)
     pub fog_level: String,
-    pub unofficial: i8, // Inverse of Official
+    pub unofficial: i8,          // Inverse of Official
     pub commercial_mode: String, // On if race is being run commercially (e.g. Professional race)
-    pub night_mode: String, // On if race is at night
-    pub is_fixed_setup: i8, // On if car setups are fixed by series rules
+    pub night_mode: String,      // On if race is at night
+    pub is_fixed_setup: i8,      // On if car setups are fixed by series rules
     pub strict_laps_checking: String,
     pub has_open_registration: i8, // On if anyone can register, off if registration requires a specific license or invitation.
-    pub hardcore_level: i8 // Hardcoreness
+    pub hardcore_level: i8,        // Hardcoreness
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -180,17 +150,16 @@ pub struct Session {
     pub session_type: String,
 
     #[serde(rename = "SessionTrackRubberState")]
-    pub track_rubber_state: String
+    pub track_rubber_state: String,
 }
 
 ///
 /// Details of Player driver, and other drivers.Deserialize
-/// 
+///
 /// Struct contains player driver information, as well as a vector of
 /// other drivers in the session
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DriverInfo {
-
     #[serde(rename = "DriverCarIdx")]
     pub car_index: usize, // Drivers' Car Index
 
@@ -246,9 +215,8 @@ pub struct DriverInfo {
     pub setup_passed_tech: u8, // Setup has passed tech inspection and is valid to race
 
     #[serde(rename = "Drivers")]
-    pub other_drivers: Vec<Driver>
+    pub other_drivers: Vec<Driver>,
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -319,35 +287,15 @@ pub struct Driver {
 
     pub club_name: Option<String>, // User's club name - Not present for safety car.
     pub division_name: Option<String> // User's disivision name - Not present for safety car.
-
 }
 
 impl Session {
-
     ///
     /// Get the maximum number of laps for the session.
-    /// 
+    ///
     /// Returns an Some(u64) when there is a maximum number of laps
     /// Returns None for unlimited laps
     pub fn max_laps(&self) -> Option<u64> {
         self.laps.as_u64()
-    }
-}
-
-impl Header {
-    pub fn latest_buffer(self) -> ValueBuffer {
-        let mut latest_tick: i32 = 0;
-        let mut buffer: ValueBuffer = self.buffers[0];
-
-        for i in 1..self.n_buffers {
-            let b = self.buffers[i as usize];
-
-            if b.ticks > latest_tick {
-                buffer = b;
-                latest_tick = b.ticks;
-            }
-        }
-
-        return buffer;
     }
 }

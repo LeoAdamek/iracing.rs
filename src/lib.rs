@@ -3,14 +3,19 @@ extern crate bitflags;
 extern crate winapi;
 extern crate serde;
 extern crate serde_yaml;
+extern crate encoding;
+extern crate libc;
 
+use crate::telemetry::Header;
 use crate::session::*;
-use serde_yaml::from_slice as yaml_from_slice;
+use serde_yaml::from_str as yaml_from;
 use std::ptr::null;
 use std::io::Error;
 use std::slice::from_raw_parts;
 use std::io::Result as IOResult;
 use std::os::windows::raw::HANDLE;
+use encoding::{Encoding, DecoderTrap};
+use encoding::all::ISO_8859_1;
 use winapi::shared::minwindef::LPVOID;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::memoryapi::{OpenFileMappingW, FILE_MAP_READ, MapViewOfFile};
@@ -106,11 +111,11 @@ impl Connection {
     /// use iracing::Connection;
     /// 
     /// match Connection::new().expect("Unable to open session").session_info() {
-    ///     Ok(session) => println!("Track Name: {}", session.weekend_info.track_name),
+    ///     Ok(session) => println!("Track Name: {}", session.weekend.track_display_name),
     ///     Err(e) => println!("Invalid Session")
     /// };
     /// ```
-    pub fn session_info(&mut self) -> serde_yaml::Result<SessionDetails> {
+    pub fn session_info(&mut self) -> Result<SessionDetails, Box<dyn std::error::Error>> {
         let header = self.header();
 
         let start = (self.location as usize + header.session_info_offset as usize) as *const u8;
@@ -118,7 +123,26 @@ impl Connection {
         
         let data: &[u8] = unsafe { from_raw_parts(start, size) };
 
-        yaml_from_slice(data)
+        // Decode the data as ISO-8859-1 (Rust wants UTF-8)
+        let content: String = match ISO_8859_1.decode(data, DecoderTrap::Strict) {
+            Ok(value) => value,
+            Err(e) => return Err(Box::from(e))
+        };
+
+        match yaml_from(content.as_str()) {
+            Ok(session) => Ok(session),
+            Err(e) => Err(Box::from(e))
+        }
+    }
+
+    ///
+    /// Get telemetry.
+    /// 
+    /// Get the latest live telemetry data, the telemetry is updated roughtly every 16ms
+    pub fn get_telemetry(&mut self) -> Result<telemetry::RawSample, Box<dyn std::error::Error>> {
+        self.header().telemetry(self.location as *const std::ffi::c_void);
+
+        unimplemented!()
     }
 }
 
@@ -136,8 +160,13 @@ mod tests {
     #[test]
     fn test_session_info() {
         match Connection::new().expect("Unable to open telemetry").session_info() {
-            Ok(session) => println!("Track: {}", session.weekend_info.track_name),
+            Ok(session) => println!("Track: {}", session.weekend.track_name),
             Err(e) => println!("Error: {:?}", e)
         };
+    }
+
+    #[test]
+    fn test_get_telemetry() {
+        Connection::new().expect("Unable to open telemetry").get_telemetry();
     }
 }

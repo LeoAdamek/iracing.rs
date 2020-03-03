@@ -5,6 +5,20 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "type": "lldb", 
+            "request": "launch",
+            "name": "Debug get_telemetry",
+            "cargo": {
+                "args": [
+                    "run",
+                    "--example",
+                    "get_telemetry"
+                ]
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
             "type": "lldb",
             "request": "launch",
             "name": "Library Tests",
