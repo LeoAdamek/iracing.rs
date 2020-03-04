@@ -140,9 +140,7 @@ impl Connection {
     /// 
     /// Get the latest live telemetry data, the telemetry is updated roughtly every 16ms
     pub fn get_telemetry(&mut self) -> Result<telemetry::Sample, Box<dyn std::error::Error>> {
-        self.header().telemetry(self.location as *const std::ffi::c_void);
-
-        unimplemented!()
+        self.header().telemetry(self.location as *const std::ffi::c_void)
     }
 }
 

@@ -3,6 +3,7 @@ use libc::c_void;
 use std::ffi::CStr;
 use std::fmt;
 use std::slice::from_raw_parts;
+use std::convert::TryInto;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -32,6 +33,7 @@ struct ValueBuffer {
     pub padding: [u32; 2], // (16-byte align) Padding
 }
 
+#[derive(Clone)]
 #[repr(C)]
 struct ValueHeader {
     pub value_type: i32,     // Value type
@@ -48,154 +50,10 @@ struct ValueHeader {
 ///
 /// Sample represents a single sample of telemetry data from iRacing
 /// either from live telemetry, or from a telemetry file.
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct Sample {
-    pub environment: Environment,
-    pub controls: Controls,
-    pub camera: Camera,
-    pub engine: Engine,
-    pub suspension: Suspension,
-    pub pit: Pit,
-    pub laps: Laps,
-    pub system: System,
-    pub radio: Radio,
-    pub session: LiveSession,
-}
-
-#[derive(Debug, Copy, Clone, Default)]
-pub struct Environment {
-    pub air_density: f32,       // Air Density (kgm^-3)
-    pub air_pressure: f32,      // Barometric pressure (inHg)
-    pub air_temperature: f32,   // Air Temperature (deg C)
-    pub altitude: f32,          // Altitude (m)
-    pub relative_humidity: f32, // Relative humidity (%)
-    pub fog: f32,               // Current fog level (%)
-}
-
-#[derive(Debug, Copy, Clone, Default)]
-pub struct Controls {
-    pub brake: f32,     // Brake Input (%)
-    pub brake_raw: f32, // Brake Input (Raw) (%)
-    pub clutch: f32,    // Clutch input (%)
-    pub gear: i32,      // Current engaged gear
-}
-
-#[derive(Debug, Copy, Clone, Default)]
-pub struct Engine {
-    pub fuel_level: f32,                 // Fuel Level (l))
-    pub fuel_level_perc: f32,            // Fuel level as a percentage (%)
-    pub fuel_pressure: f32,              // Fuel Pressure (hPa)
-    pub fuel_usage_per_hour: f32,        // Fuel Usage (kg/hour)
-    pub engine_warnings: EngineWarnings, // Current engine warnings
-    pub manifold_pressure: f32,          // Manifold pressure (bar)
-    pub oil_level: f32,                  // Oil Level (l)
-    pub oil_pressure: f32,               // Oil Pressure
-    pub oil_temperature: f32,            // Oil temperature (degC)
-    pub rpm: f32,                        // Engine RPM (rev min^-1)
-}
-
-#[derive(Debug, Copy, Clone, Default)]
-pub struct Camera {
-    pub number: i32,        // Camera Number
-    pub state: CameraState, // Current camera state
-    pub car_index: i32,     // Car index of camera focus
-    pub group: i32,         // Camera group
-}
-
-#[derive(Debug, Copy, Clone, Default)]
-pub struct System {
-    pub cpu_usage_bg: f32,          // Background CPU Usage (%)
-    pub frame_rate: f32,            // Current fps
-    pub replay_frame: i32,          // Current frame in replay
-    pub replay_frame_end: i32,      // Frame in replay from end
-    pub replay_slow_motion: bool,   // Replay in slow-motion
-    pub replay_playback_speed: i32, // Replay playback speed relative to real-time
-    pub replay_session_number: i32, // Session number of replay
-    pub replay_session_time: f64,   // Seconds since replay session start
-    pub display_units: Units,       // Units being displayed
-
-    // Game state flags
-    pub is_disk_logging_active: bool, // Telemetry being logged to disk
-    pub is_disk_logging_enabled: bool, // Telemetry enabled
-    pub is_car_in_garage: bool,       // Car in Garage?
-    pub is_on_track: bool,            // Car on track with plauyer
-    pub is_on_track_car: bool,        // Car on track
-    pub is_replay_running: bool,      // Replay playing
-    pub dc_driver_so_far: i32,        // Count of drivers who have driven a stint
-    pub dc_lap_status: i32,           // Status of driver change lap requirements
-    pub driver_marker: bool,          // Driver Marker
-    pub enter_exit_reset: ResetAction, // Current reset action
-}
-
-#[derive(Debug, Copy, Clone, Default)]
-pub struct Laps {
-    // Laps
-    pub number: i32,                          // Current lap number
-    pub best_lap: i32,                        // Lap number on which the best lap time was set
-    pub best_lap_time: f32,                   // Best lap time
-    pub best_n_lap_lap: i32,                  // Player last lap in base N average laps
-    pub best_n_lap_time: f32,                 // Player best N average lap time
-    pub current_time_est: f32,                // Estimated time for current lap completion
-    pub delta_to_best: f32,                   // Delta between current lap and best lap
-    pub delta_to_best_change: f32,            // Rate of change in lap-to-best delta
-    pub detla_to_best_ok: bool,               // Lap-to-best delta is valid
-    pub delta_to_optimal: f32,                // Delta between current lap and optimal lap
-    pub delta_to_optimal_change: f32,         // Range of change between lap-to-optimal delta
-    pub delta_to_optimal_ok: bool,            // Lap-to-optimal delta is valid
-    pub delta_to_session_best: f32,           // Delta between current lap and best lap of session
-    pub delta_to_session_best_change: f32,    // Rate of change between lap-to-session-best delta
-    pub delta_to_session_best_ok: bool,       // Lap-to-session-best delta is valid
-    pub delta_to_session_last: f32,           // Delta between current lap and last lap of session
-    pub delta_to_session_last_change: f32,    // Rate of change between lap-to-session-last delta
-    pub delta_to_session_last_ok: bool,       // Lap-to-session-last delta is valid
-    pub delta_to_session_optimal: f32, // Delta between current lap and optimal lap of session
-    pub delta_to_session_optimal_change: f32, // Rate of change between lap-to-session-optimal delta
-    pub delta_to_session_optimal_ok: bool, // Lap-to-session-optimal delta is valid
-    pub distance: f32,                 // Distances travelled from start/finish line this lap (m)
-    pub distance_perc: f32,            // Lap completion percentage (%)
-    pub last_n_lap_seq: i32,           // Consecutive clean laps completed for N average#
-    pub last_lap_time: f32,            // Last lap time
-    pub last_n_lap_time: f32,          // Average lap time last N laps
-}
-
-#[derive(Debug, Copy, Clone, Default)]
-pub struct Pit {
-    pub optinal_repairs_remaining: f32, // Pit time remaining for optional repairs
-    pub repairs_remaining: f32,         // Pit time remaining for required repairs
-    pub services: PitServices,          // Pit Services Enabled
-    pub service_fuel_level: f32,        // Current pit refuelling (l)
-    pub pressures_left_front: f32,      // Left front tyre pressure (kPa)
-    pub pressures_left_rear: f32,       // Left rear tyre pressure (kPa)
-    pub pressures_right_front: f32,     // Left front tyre pressure (kPa)
-    pub pressures_right_rear: f32,      // Left rear tyre pressure (kPa)
-}
-
-#[derive(Debug, Copy, Clone, Default)]
-pub struct Suspension {
-    pub pitch: f32,      // Vehicle pitch (rad)
-    pub pitch_rate: f32, // Vehicle pitch rate (rads^-1)
-    pub roll: f32,       // Vehicle roll (rad)
-    pub roll_rate: f32,  // Vehicle roll rate (rads^-1)
-}
-
-#[derive(Debug, Copy, Clone, Default)]
-pub struct LiveSession {
-    pub latitude: f64,     // Player latitude (deg)
-    pub lat_accel: f32,    // Lateral acceleration, including gravity (ms^-2)
-    pub longitude: f64,    // Plater Longitude (deg)
-    pub lng_accel: f32,    // Longitudinal acceleration, including gravity (ms^-2)
-    pub on_pit_road: bool, // Player car on pit road between limiter cones
-
-    pub player_car_class_position: i32, // Player car position in class
-    pub player_car_position: i32,       // Player car position overall
-    pub race_laps: i32,                 // Total laps completed in race
-}
-
-#[derive(Debug, Copy, Clone, Default)]
-pub struct Radio {
-    pub transmit_car: i32,       // Car currenty broadcasting on radio
-    pub transmit_frequency: i32, // Radio frequency index
-    pub transmit_channel: i32,   // Radio channel
+    buffer: Vec<u8>,
+    values: Vec<ValueHeader>
 }
 
 bitflags! {
@@ -254,26 +112,40 @@ bitflags! {
     }
 }
 
+/// Variable type
+/// 
+#[derive(Debug,Copy,Clone)]
 pub enum VarType {
-    CHAR,
-    BOOL,
-    INT,
-    BITS,
-    FLOAT,
-    DOUBLE,
-    UNKNOWN
+    CHAR(u8),
+    BOOL(bool),
+    INT(i32),
+    BITS(u32),
+    FLOAT(f32),
+    DOUBLE(f64),
+    UNKNOWN(())
 }
 
 impl From<i32> for VarType {
     fn from(v: i32) -> VarType {
         match v {
-            0 => VarType::CHAR,
-            1 => VarType::BOOL,
-            2 => VarType::INT,
-            3 => VarType::BITS,
-            4 => VarType::FLOAT,
-            5 => VarType::DOUBLE,
-            _ => VarType::UNKNOWN
+            0 => VarType::CHAR(0x0),
+            1 => VarType::BOOL(false),
+            2 => VarType::INT(0),
+            3 => VarType::BITS(0x00),
+            4 => VarType::FLOAT(0.0),
+            5 => VarType::DOUBLE(0.0),
+            _ => VarType::UNKNOWN(())
+        }
+    }
+}
+
+impl VarType {
+    pub fn size(&self) -> usize {
+        match self {
+            Self::CHAR(_) | Self::BOOL(_) => 1,
+            Self::INT(_) | Self::BITS(_) | Self::FLOAT(_) => 4,
+            Self::DOUBLE(_) => 8,
+            Self::UNKNOWN(_) => 1
         }
     }
 }
@@ -324,6 +196,22 @@ impl ValueHeader {
     pub fn name(&self) -> String {
         let name = unsafe { CStr::from_ptr(self._name.as_ptr()) };
         name.to_string_lossy().to_string()
+    }
+}
+
+
+// Workaround to handle cloning var descriptions which are [u8; 64] thus cannot be derived
+struct VarDescription([c_char; ValueHeader::MAX_VAR_DESCRIPTION_LENGTH]);
+
+impl Clone for VarDescription {
+    fn clone(&self) -> Self {
+        let mut new = VarDescription([0; ValueHeader::MAX_VAR_DESCRIPTION_LENGTH]);
+
+        for i in 1 .. ValueHeader::MAX_VAR_DESCRIPTION_LENGTH {
+            new.0[i] = self.0[i];
+        }
+
+        new
     }
 }
 
@@ -382,13 +270,13 @@ impl Header {
         unsafe { from_raw_parts(buffer_loc as *const u8, sz) }
     }
 
-    fn get_var_header(&self, from_loc: *const c_void) -> Vec<ValueHeader> {
+    fn get_var_header(&self, from_loc: *const c_void) -> &[ValueHeader] {
         let n_vars = self.n_vars as usize;
         let header_loc = from_loc as usize + self.header_offset as usize;
 
         let content = unsafe { from_raw_parts(header_loc as *const ValueHeader, n_vars) };
 
-        content.clone().to_vec()
+        content.clone()
     }
 
     pub fn telemetry(
@@ -398,23 +286,62 @@ impl Header {
         let value_buffer = self.latest_var_buffer(from_loc);
         let value_header = self.get_var_header(from_loc);
 
-
-        println!("{:#?}", value_header);
-        println!("{:#?}", Sample::from_var_buffer(value_header, value_buffer));
-
-        unimplemented!()
+        Ok(Sample::new(value_header.to_vec(), value_buffer.to_vec()))
     }
 }
 
 impl Sample {
-    fn from_var_buffer(header: Vec<ValueHeader>, buffer: &[u8]) -> Self {
-        let smp = Sample::default();
+    fn new(header: Vec<ValueHeader>, buffer: Vec<u8>) -> Self {
+        Sample {
+            values: header,
+            buffer: buffer,
+        }
+    }
 
-        for vh in header.iter() {
-            match VarType::from(vh.value_type) {
+    fn header_for(&self, name: &'static str) -> Option<ValueHeader> {
+        for v in self.values.iter() {
+            if v.name() == name {
+                return Some(v.clone());
             }
         }
+        None
+    }
 
-        smp
+    pub fn has(&self, name: &'static str) -> bool {
+        match self.header_for(name) {
+            Some(_) => true,
+            None => false
+        }
+    }
+
+    pub fn get(&self, name: &'static str) -> Option<VarType> {
+        match self.header_for(name) {
+            None => None,
+            Some(vh) => {
+               let vs = vh.offset as usize; // Value start
+               let vt = VarType::from(vh.value_type);
+               let vc = vh.count;
+               let ve = vs + vt.size(); // Value end = Value Start + Value Size
+                
+               let raw_val = &self.buffer[vs..ve];
+
+               for i in 1..vc {
+
+               }
+
+               let v: VarType;
+
+               v = match vt {
+                   VarType::INT(_) => VarType::INT(i32::from_le_bytes( raw_val.try_into().unwrap() )),
+                   VarType::FLOAT(_) => VarType::FLOAT(f32::from_le_bytes( raw_val.try_into().unwrap() )),
+                   VarType::DOUBLE(_) => VarType::DOUBLE(f64::from_le_bytes( raw_val.try_into().unwrap() )),
+                   VarType::CHAR(_) => VarType::CHAR(raw_val[0] as u8),
+                   VarType::BOOL(_) => VarType::BOOL(raw_val[0] > 0),
+                   _ => unimplemented!()
+               };
+
+               Some(v)
+            }
+        }
     }
 }
