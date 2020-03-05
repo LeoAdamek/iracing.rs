@@ -5,6 +5,11 @@ use std::fmt;
 use std::slice::from_raw_parts;
 use std::convert::TryInto;
 
+
+const DATA_EVENT_NAME: &'static str = "Local\\IRSDKDataValidEvent";
+
+///
+/// Session / Telemetry Data Header
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Header {
@@ -112,10 +117,10 @@ bitflags! {
     }
 }
 
-/// Variable type
+/// Telemetry Value
 /// 
 #[derive(Debug,Copy,Clone)]
-pub enum VarType {
+pub enum Value {
     CHAR(u8),
     BOOL(bool),
     INT(i32),
@@ -125,21 +130,21 @@ pub enum VarType {
     UNKNOWN(())
 }
 
-impl From<i32> for VarType {
-    fn from(v: i32) -> VarType {
+impl From<i32> for Value {
+    fn from(v: i32) -> Value {
         match v {
-            0 => VarType::CHAR(0x0),
-            1 => VarType::BOOL(false),
-            2 => VarType::INT(0),
-            3 => VarType::BITS(0x00),
-            4 => VarType::FLOAT(0.0),
-            5 => VarType::DOUBLE(0.0),
-            _ => VarType::UNKNOWN(())
+            0 => Value::CHAR(0x0),
+            1 => Value::BOOL(false),
+            2 => Value::INT(0),
+            3 => Value::BITS(0x00),
+            4 => Value::FLOAT(0.0),
+            5 => Value::DOUBLE(0.0),
+            _ => Value::UNKNOWN(())
         }
     }
 }
 
-impl VarType {
+impl Value {
     pub fn size(&self) -> usize {
         match self {
             Self::CHAR(_) | Self::BOOL(_) => 1,
@@ -190,12 +195,21 @@ impl ValueHeader {
     /// Maximum length for a variable description
     const MAX_VAR_DESCRIPTION_LENGTH: usize = 64;
 
-    ///
     /// Convert the name from a c_char[32] to a rust String
     /// Expect that we won't have any encoding issues as the values should always be ASCII
     pub fn name(&self) -> String {
         let name = unsafe { CStr::from_ptr(self._name.as_ptr()) };
         name.to_string_lossy().to_string()
+    }
+
+    pub fn description(&self) -> String {
+        let description = unsafe { CStr::from_ptr(self._description.as_ptr()) };
+        description.to_string_lossy().to_string()
+    }
+
+    pub fn unit(&self) -> String {
+        let unit = unsafe { CStr::from_ptr(self._unit.as_ptr()) };
+        unit.to_string_lossy().to_string()
     }
 }
 
@@ -280,7 +294,7 @@ impl Header {
     }
 
     pub fn telemetry(
-        &mut self,
+        &self,
         from_loc: *const c_void,
     ) -> Result<Sample, Box<dyn std::error::Error>> {
         let value_buffer = self.latest_var_buffer(from_loc);
@@ -314,29 +328,24 @@ impl Sample {
         }
     }
 
-    pub fn get(&self, name: &'static str) -> Option<VarType> {
+    pub fn get(&self, name: &'static str) -> Option<Value> {
         match self.header_for(name) {
             None => None,
             Some(vh) => {
                let vs = vh.offset as usize; // Value start
-               let vt = VarType::from(vh.value_type);
-               let vc = vh.count;
+               let vt = Value::from(vh.value_type);
                let ve = vs + vt.size(); // Value end = Value Start + Value Size
                 
                let raw_val = &self.buffer[vs..ve];
 
-               for i in 1..vc {
-
-               }
-
-               let v: VarType;
+               let v: Value;
 
                v = match vt {
-                   VarType::INT(_) => VarType::INT(i32::from_le_bytes( raw_val.try_into().unwrap() )),
-                   VarType::FLOAT(_) => VarType::FLOAT(f32::from_le_bytes( raw_val.try_into().unwrap() )),
-                   VarType::DOUBLE(_) => VarType::DOUBLE(f64::from_le_bytes( raw_val.try_into().unwrap() )),
-                   VarType::CHAR(_) => VarType::CHAR(raw_val[0] as u8),
-                   VarType::BOOL(_) => VarType::BOOL(raw_val[0] > 0),
+                   Value::INT(_) => Value::INT(i32::from_le_bytes( raw_val.try_into().unwrap() )),
+                   Value::FLOAT(_) => Value::FLOAT(f32::from_le_bytes( raw_val.try_into().unwrap() )),
+                   Value::DOUBLE(_) => Value::DOUBLE(f64::from_le_bytes( raw_val.try_into().unwrap() )),
+                   Value::CHAR(_) => Value::CHAR(raw_val[0] as u8),
+                   Value::BOOL(_) => Value::BOOL(raw_val[0] > 0),
                    _ => unimplemented!()
                };
 

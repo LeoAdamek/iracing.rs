@@ -1,3 +1,4 @@
+#![allow(dead_code)] // We may not need to use functions we export
 #[macro_use]
 extern crate bitflags;
 extern crate winapi;
@@ -13,7 +14,9 @@ use std::ptr::null;
 use std::io::Error;
 use std::slice::from_raw_parts;
 use std::io::Result as IOResult;
+use std::mem::transmute;
 use std::os::windows::raw::HANDLE;
+use libc::c_void;
 use encoding::{Encoding, DecoderTrap};
 use encoding::all::ISO_8859_1;
 use winapi::shared::minwindef::LPVOID;
@@ -42,7 +45,8 @@ pub const UNLIMITED_TIME: f32 = 604800.0;
 /// let _ = Connection::new().expect("Unable to find telemetry data");
 /// ```
 pub struct Connection {
-    location: *mut std::ffi::c_void
+    location: *const c_void,
+    header: Header
 }
 
 impl Connection {
@@ -74,7 +78,9 @@ impl Connection {
             return Err(Error::from_raw_os_error(errno))
         }
 
-        return Ok(Connection {location: view});
+        let header = unsafe { Self::read_header(view) };
+
+        return Ok(Connection {location: view, header: header});
     }
 
     ///
@@ -88,13 +94,14 @@ impl Connection {
     /// ```
     /// use iracing::Connection;
     /// 
-    /// let header = Connection::new().expect("Unable to find telemetry data").header();
+    /// let location_of_an_iracing_header: *const c_void;
+    /// let header = Connection::read_header(location_of_an_iracing_header);
     /// 
     /// println!("Data Version: {}", header.version);
     /// ```
-    pub fn header(&mut self) -> Header {
-        let raw_header: *const Header = unsafe { std::mem::transmute(self.location) };
-        let h: Header = unsafe { *raw_header };
+    pub unsafe fn read_header(from: *const c_void) -> Header {
+        let raw_header: *const Header = transmute(from);
+        let h: Header = *raw_header;
 
         h.clone()
     }
@@ -116,7 +123,7 @@ impl Connection {
     /// };
     /// ```
     pub fn session_info(&mut self) -> Result<SessionDetails, Box<dyn std::error::Error>> {
-        let header = self.header();
+        let header = unsafe { Self::read_header(self.location) };
 
         let start = (self.location as usize + header.session_info_offset as usize) as *const u8;
         let size = header.session_info_length as usize;
@@ -136,24 +143,26 @@ impl Connection {
     }
 
     ///
-    /// Get telemetry.
+    /// Get latest telemetry.
     /// 
     /// Get the latest live telemetry data, the telemetry is updated roughtly every 16ms
-    pub fn get_telemetry(&mut self) -> Result<telemetry::Sample, Box<dyn std::error::Error>> {
-        self.header().telemetry(self.location as *const std::ffi::c_void)
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use iracing::Connection;
+    /// 
+    /// let sample = Connection::new()?.telemetry()?;
+    /// ``` 
+    pub fn telemetry(&mut self) -> Result<telemetry::Sample, Box<dyn std::error::Error>> {
+        let header = unsafe { Self::read_header(self.location) };
+        header.telemetry(self.location as *const std::ffi::c_void)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_header() {
-        let header: Header = Connection::new().expect("Unable to open telemetry").header();
-
-        assert_eq!(header.version, 2);
-    }
 
     #[test]
     fn test_session_info() {
@@ -164,7 +173,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_telemetry() {
-        Connection::new().expect("Unable to open telemetry").get_telemetry();
+    fn test_latest_telemetry() {
+        Connection::new().expect("Unable to open telemetry").telemetry().expect("Couldn't get latest telem");
     }
 }
