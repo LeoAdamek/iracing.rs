@@ -6,6 +6,31 @@ Live telemetry and session data interface for Rust.
 Usage
 -----
 
+See further examples in [/examples](examples/)
+
+```rust
+extern crate iracing;
+use iracing::Connection;
+use iracing::telemetry::TelemetryError;
+
+pub fn main() {
+
+    // Open the iRacing Telemetry data
+    let conn = Connection::new().expect("Unable to open telemetry. Is iRacing running?");
+
+    // Get a blocking telemetry client
+    let bc = Connection::blocking().expect("Unable to start telemetry reader");
+
+    loop {
+        // bc.get() will block until new telemetry data is available.
+        let sample = match bc.get() {
+            Ok(sample) => sample,
+            Err(TelemetryError::TIMEOUT(ms)) => panic!("Telemetry timed out after {}ms", ms);
+            Err(error) => panic!("Telemetry Error: {:?}", error);
+        }
+    }
+}
+```
 
 
 How iRacing Telemetry Works
@@ -63,8 +88,7 @@ typedef struct iracing_telem_var_header {
 ```
 
 If the top-level header indicates there are 548 variables,
-then the the variables header will be an array of 548 items.
-
+then the the variables header will be an array of 548 items (`iracing_telem_var_header[548]`).
 This header can then used as a look-up-table to find specific telemetry variables
 within the telemetry buffer.
 
