@@ -20,7 +20,7 @@ rpath = false
 [dependencies]
 libc = "0.2"
 bitflags = "1.2"
-winapi = {version = "0.3.8", features = ["std","memoryapi","winnt","errhandlingapi"] }
+winapi = {version = "0.3.8", features = ["std","memoryapi","winnt","errhandlingapi","synchapi"] }
 serde = {version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
 encoding = "0.2.33"

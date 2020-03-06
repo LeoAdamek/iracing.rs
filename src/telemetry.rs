@@ -1,15 +1,22 @@
+use std::convert::TryInto;
+use std::default::Default;
+use std::error::Error;
+use std::ffi::CStr;
+use std::fmt::Display;
+use std::fmt;
+use std::os::windows::raw::HANDLE;
+use std::ptr::null;
+use std::slice::from_raw_parts;
+use std::time::Duration;
+
 use libc::c_char;
 use libc::c_void;
-use std::ffi::CStr;
-use std::fmt;
-use std::slice::from_raw_parts;
-use std::convert::TryInto;
-
+use winapi::um::errhandlingapi::GetLastError;
+use winapi::um::minwinbase::LPSECURITY_ATTRIBUTES;
+use winapi::um::synchapi::{CreateEventW,WaitForSingleObject,ResetEvent};
 
 const DATA_EVENT_NAME: &'static str = "Local\\IRSDKDataValidEvent";
 
-///
-/// Session / Telemetry Data Header
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Header {
@@ -28,6 +35,17 @@ pub struct Header {
     pub padding: [u32; 2],  // Padding
 
     buffers: [ValueBuffer; 4], // Data buffers
+}
+
+/// Blocking telemetry interface
+/// 
+/// Calling `sample()` on a Blocking interface will block until a new telemetry sample is made available.
+/// 
+pub struct Blocking {
+    origin: *const c_void,
+    values: Vec<ValueHeader>,
+    header: Header,
+    event_handle: HANDLE
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -57,6 +75,7 @@ struct ValueHeader {
 /// either from live telemetry, or from a telemetry file.
 #[derive(Debug, Default)]
 pub struct Sample {
+    pub tick: i32,
     buffer: Vec<u8>,
     values: Vec<ValueHeader>
 }
@@ -151,6 +170,42 @@ impl Value {
             Self::INT(_) | Self::BITS(_) | Self::FLOAT(_) => 4,
             Self::DOUBLE(_) => 8,
             Self::UNKNOWN(_) => 1
+        }
+    }
+}
+
+impl Into<i32> for Value {
+    fn into(self) -> i32 {
+        match self {
+            Self::INT(n) => n,
+            _ => 0
+        }
+    }
+}
+
+impl Into<f32> for Value {
+    fn into(self) -> f32 {
+        match self {
+            Self::FLOAT(n) => n,
+            _ => 0.0
+        }
+    }
+}
+
+impl Into<f64> for Value {
+    fn into(self) -> f64 {
+        match self {
+            Self::DOUBLE(n) => n,
+            _ => 0.0
+        }
+    }
+}
+
+impl Into<bool> for Value {
+    fn into(self) -> bool {
+        match self {
+            Self::BOOL(b) => b,
+            _ => false
         }
     }
 }
@@ -260,24 +315,22 @@ impl fmt::Debug for ValueHeader {
 }
 
 impl Header {
-    fn latest_buffer(self) -> ValueBuffer {
+    fn latest_buffer(&self) -> (i32, ValueBuffer) {
         let mut latest_tick: i32 = 0;
-        let mut buffer: ValueBuffer = self.buffers[0];
+        let mut buffer = self.buffers[0];
 
-        for i in 1..self.n_buffers {
-            let b = self.buffers[i as usize];
+        for b in self.buffers.iter() {
 
             if b.ticks > latest_tick {
-                buffer = b;
+                buffer = *b;
                 latest_tick = b.ticks;
             }
         }
 
-        return buffer;
+        return (latest_tick, buffer);
     }
 
-    fn latest_var_buffer(&self, from_loc: *const c_void) -> &[u8] {
-        let lb = self.latest_buffer();
+    fn var_buffer(&self, lb: ValueBuffer, from_loc: *const c_void) -> &[u8] {
         let sz = self.buffer_length as usize;
 
         let buffer_loc = from_loc as usize + lb.offset as usize;
@@ -297,16 +350,18 @@ impl Header {
         &self,
         from_loc: *const c_void,
     ) -> Result<Sample, Box<dyn std::error::Error>> {
-        let value_buffer = self.latest_var_buffer(from_loc);
+        let (tick, vbh) = self.latest_buffer();
+        let value_buffer = self.var_buffer(vbh, from_loc);
         let value_header = self.get_var_header(from_loc);
 
-        Ok(Sample::new(value_header.to_vec(), value_buffer.to_vec()))
+        Ok(Sample::new(tick, value_header.to_vec(), value_buffer.to_vec()))
     }
 }
 
 impl Sample {
-    fn new(header: Vec<ValueHeader>, buffer: Vec<u8>) -> Self {
+    fn new(tick: i32, header: Vec<ValueHeader>, buffer: Vec<u8>) -> Self {
         Sample {
+            tick: tick,
             values: header,
             buffer: buffer,
         }
@@ -341,9 +396,10 @@ impl Sample {
                let v: Value;
 
                v = match vt {
-                   Value::INT(_) => Value::INT(i32::from_le_bytes( raw_val.try_into().unwrap() )),
-                   Value::FLOAT(_) => Value::FLOAT(f32::from_le_bytes( raw_val.try_into().unwrap() )),
-                   Value::DOUBLE(_) => Value::DOUBLE(f64::from_le_bytes( raw_val.try_into().unwrap() )),
+                   Value::INT(_) => Value::INT( i32::from_le_bytes( raw_val.try_into().unwrap() )),
+                   Value::FLOAT(_) => Value::FLOAT( f32::from_le_bytes( raw_val.try_into().unwrap() )),
+                   Value::DOUBLE(_) => Value::DOUBLE( f64::from_le_bytes( raw_val.try_into().unwrap() )),
+                   Value::BITS(_) => Value::BITS( u32::from_le_bytes( raw_val.try_into().unwrap() )),
                    Value::CHAR(_) => Value::CHAR(raw_val[0] as u8),
                    Value::BOOL(_) => Value::BOOL(raw_val[0] > 0),
                    _ => unimplemented!()
@@ -351,6 +407,78 @@ impl Sample {
 
                Some(v)
             }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum TelemetryError {
+    ABANDONED,
+    TIMEOUT(usize),
+    UNKNOWN(u32)
+}
+
+impl Display for TelemetryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ABANDONED => write!(f, "{}", "Abandoned"),
+            Self::TIMEOUT(ms) => write!(f, "Timeout after {}ms", ms),
+            Self::UNKNOWN(v) => write!(f, "Unknown error code = {:x?}", v)
+        }
+    }
+}
+
+impl Error for TelemetryError {
+}
+
+
+impl Blocking {
+    pub fn new(location: *const c_void, head: Header) -> std::io::Result<Self> {
+        let values = head.get_var_header(location).to_vec();
+    
+        let mut event_name: Vec<u16> = DATA_EVENT_NAME.encode_utf16().collect();
+        event_name.push(0);
+
+        let sc: LPSECURITY_ATTRIBUTES = unsafe { std::mem::zeroed() };
+
+        let handle: HANDLE = unsafe { CreateEventW(sc, 0, 0, event_name.as_ptr()) };
+
+        if null() == handle {
+            let errno: i32 = unsafe { GetLastError() as i32 };
+
+            return Err(std::io::Error::from_raw_os_error(errno));
+        }
+
+
+        Ok(Blocking{
+           origin: location,
+           header: head,
+           values: values,
+           event_handle: handle
+        }) 
+    }
+
+    pub fn sample(&self, timeout: Duration) -> Result<Sample, Box<dyn Error>> {
+        
+        let wait_time: u32 = match timeout.as_millis().try_into() {
+            Ok(v) => v,
+            Err(e) => return Err(Box::new(e))
+        };
+
+        let signal = unsafe { WaitForSingleObject(self.event_handle, wait_time)  };
+
+        match signal {
+            0x80 => Err(Box::new(TelemetryError::ABANDONED)), // Abandoned
+            0x102 => Err(Box::new(TelemetryError::TIMEOUT(20))), // Timeout
+            0xFFFFFFFF => { // Error
+                let errno = unsafe { GetLastError() as i32 };
+                Err(Box::new(std::io::Error::from_raw_os_error(errno)))
+            }, 
+            0x00 => { // OK
+                unsafe { ResetEvent(self.event_handle) };
+                self.header.telemetry(self.origin)
+            }
+            _ => Err(Box::new(TelemetryError::UNKNOWN(signal as u32)))
         }
     }
 }

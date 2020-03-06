@@ -158,6 +158,10 @@ impl Connection {
         let header = unsafe { Self::read_header(self.location) };
         header.telemetry(self.location as *const std::ffi::c_void)
     }
+
+    pub unsafe fn blocking(&self) -> IOResult<telemetry::Blocking> {
+        telemetry::Blocking::new(self.location, Self::read_header(self.location))
+    }
 }
 
 #[cfg(test)]

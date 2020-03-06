@@ -10,7 +10,7 @@
             "name": "Debug get_telemetry",
             "cargo": {
                 "args": [
-                    "run",
+                    "build",
                     "--example",
                     "get_telemetry"
                 ]
