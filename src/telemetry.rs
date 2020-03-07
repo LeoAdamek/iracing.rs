@@ -138,6 +138,12 @@ bitflags! {
 
 /// Telemetry Value
 /// 
+/// Represents a single value in the telemetry. 
+/// Telemetry data is always quantitive but may be of varying numeric types, plus boolean.
+/// 
+/// The iRacing Telemetry documentation describes the data-type expected for a given telemetry measurement.
+/// `Into` can be used when the expected data type is known, else `match` can be used to dynamically handle the
+/// returned data type.
 #[derive(Debug,Copy,Clone)]
 pub enum Value {
     CHAR(u8),
@@ -376,6 +382,8 @@ impl Sample {
         None
     }
 
+    ///
+    /// Check if a given variable is available in the telemetry sample
     pub fn has(&self, name: &'static str) -> bool {
         match self.header_for(name) {
             Some(_) => true,
@@ -383,6 +391,20 @@ impl Sample {
         }
     }
 
+
+    ///
+    /// Get a Value from the sample.
+    /// 
+    /// Read a single varialbe from the telemetry sample.
+    /// 
+    /// Returns `None` if the value is not present in the sample.
+    /// Returns `Some(Value)` if the telemetry value is available.
+    /// Panics if an unknown data-type is encountered.
+    /// 
+    /// # Parameters
+    /// 
+    /// `name`  Name of the telemetry variable to get
+    ///   - see the iRacing Telemtry documentation for a complete list of possible values
     pub fn get(&self, name: &'static str) -> Option<Value> {
         match self.header_for(name) {
             None => None,
@@ -411,6 +433,10 @@ impl Sample {
     }
 }
 
+///
+/// Telemetry Error
+/// 
+/// An error which occurs when telemetry samples cannot be read from the memory buffer.
 #[derive(Debug)]
 pub enum TelemetryError {
     ABANDONED,
@@ -469,7 +495,7 @@ impl Blocking {
 
         match signal {
             0x80 => Err(Box::new(TelemetryError::ABANDONED)), // Abandoned
-            0x102 => Err(Box::new(TelemetryError::TIMEOUT(20))), // Timeout
+            0x102 => Err(Box::new(TelemetryError::TIMEOUT(wait_time as usize))), // Timeout
             0xFFFFFFFF => { // Error
                 let errno = unsafe { GetLastError() as i32 };
                 Err(Box::new(std::io::Error::from_raw_os_error(errno)))

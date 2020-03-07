@@ -1,4 +1,9 @@
 use serde::{Deserialize, Serialize};
+
+///
+/// Session Details
+/// 
+/// Top-level details regarding the current session, including race weekend, session and drivers.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SessionDetails {
     #[serde(rename = "WeekendInfo")]
@@ -11,6 +16,9 @@ pub struct SessionDetails {
     pub drivers: DriverInfo, // Driver information
 }
 
+///
+/// Details of the race weekend. Including details of the track being raced,
+/// the weather, racing series, and the rules in play for the session.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct WeekendInfo {
@@ -218,6 +226,10 @@ pub struct DriverInfo {
     pub other_drivers: Vec<Driver>,
 }
 
+///
+/// Details of all drivers (players) in the session, including the current driver.
+///
+/// Contains details of the user-profile of the driver, their License class, Safety Rating, and iRating.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Driver {
@@ -293,8 +305,8 @@ impl Session {
     ///
     /// Get the maximum number of laps for the session.
     ///
-    /// Returns an Some(u64) when there is a maximum number of laps
-    /// Returns None for unlimited laps
+    /// Returns an Some(u64) when there is a maximum number of laps.
+    /// Returns None for unlimited laps.
     pub fn max_laps(&self) -> Option<u64> {
         self.laps.as_u64()
     }

@@ -1,8 +1,4 @@
-use std::convert::TryInto;
 use iracing::Connection;
-use iracing::telemetry::Value;
-use iracing::telemetry::EngineWarnings;
-use std::thread::sleep;
 use std::time::Duration;
 
 pub fn main() {    
@@ -34,8 +30,6 @@ pub fn main() {
         }
 
         println!("");
-
-        // sleep(Duration::from_millis(25));
     }
 
 }

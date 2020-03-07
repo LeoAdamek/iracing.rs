@@ -15,5 +15,5 @@ jobs:
     - uses: actions/checkout@v2
     - name: Build
       run: cargo build --release --examples --verbose
-    - name: Check Documentation Examples are Valid
-      run: cargo test --verbose --doc
+    - name: Check Tests Compile (don't run)
+      run: cargo test --verbose --lib --no-run
