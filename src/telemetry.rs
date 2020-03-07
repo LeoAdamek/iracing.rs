@@ -75,22 +75,33 @@ struct ValueHeader {
 /// either from live telemetry, or from a telemetry file.
 #[derive(Debug, Default)]
 pub struct Sample {
-    pub tick: i32,
+    tick: i32,
     buffer: Vec<u8>,
     values: Vec<ValueHeader>
 }
 
 bitflags! {
-    /**
-     * Current warnings / status flags of the engine.
-     */
+    ///
+    /// Current warnings / status flags of the player's engine.
+    ///
     #[derive(Default)]
     pub struct EngineWarnings: u32 {
+        /// Water Temperature too high
         const WATER_TEMPERATURE = 0x00;
+
+        /// Fuel pressure too low (low fuel)
         const FUEL_PRESSURE = 0x02;
+        
+        /// Oil pressure too low (low oil)
         const OIL_PRESSURE = 0x04;
+
+        /// Engine stalled
         const ENGINE_STALLED = 0x08;
+
+        /// Status: Pit speed limiter is on.
         const PIT_SPEED_LIMITER = 0x10;
+
+        /// Status: rev limiter is active.
         const REV_LIMITER_ACTIVE = 0x20;
     }
 }
@@ -144,6 +155,38 @@ bitflags! {
 /// The iRacing Telemetry documentation describes the data-type expected for a given telemetry measurement.
 /// `Into` can be used when the expected data type is known, else `match` can be used to dynamically handle the
 /// returned data type.
+/// 
+/// # Examples
+/// 
+/// ## Known, Expected Data Type
+/// ```
+/// use iracing::telemetry::Sample;
+/// 
+/// let s: Sample = some_sample_getter();
+/// 
+/// let gear: i32 = s.get("Gear").unwrap().into();
+/// ```
+/// 
+/// ## Unknown data type
+/// 
+/// ```
+/// use iracing::telemtry::{Sample, Value};
+/// 
+/// let v: &'static str = some_input_for_var_name();
+/// let s: Sample = some_sample_getter();
+/// 
+/// match s.get(v) {
+///     None => println!("Didn't find that value");
+///     Some(value) => match {
+///         Value::CHAR(c) => println!("Value: {:x}", c),
+///         Value::BOOL(b) => println!("Yes") if b,
+///         Value::INT(i) => println!("Value: {}", i),
+///         Value::BITS(u) => println!("Value: 0x{:32b}", u),
+///         Value::FLOAT(f) | Value::DOUBLE(f) => println!("Value: {:.2}", f),
+///         _  => println!("Unknown Value")
+///     }
+/// };  
+/// ```
 #[derive(Debug,Copy,Clone)]
 pub enum Value {
     CHAR(u8),
@@ -484,6 +527,21 @@ impl Blocking {
         }) 
     }
 
+    ///
+    /// Sample Telemetry Data
+    /// 
+    /// Waits for new telemetry data up to `timeout` and returns a safe copy of the telemetry data.
+    /// Returns an error on timeout or underlying system error.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use iracing::Connection;
+    /// use std::time::Duration;
+    /// 
+    /// let sampler = Connection::new()?.blocking()?;
+    /// let sample = sampler.get(Duration::from_millis(50))?;
+    /// ```
     pub fn sample(&self, timeout: Duration) -> Result<Sample, Box<dyn Error>> {
         
         let wait_time: u32 = match timeout.as_millis().try_into() {

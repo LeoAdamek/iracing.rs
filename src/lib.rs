@@ -159,6 +159,21 @@ impl Connection {
         header.telemetry(self.location as *const std::ffi::c_void)
     }
 
+    ///
+    /// Get Blocking Telemetry Interface.
+    /// 
+    /// Creates a new `iracing::telemetry::Blocking` connector which allows telemetry samples to
+    /// be collected, and will wait and block until a new sample is available, or a timeout is reached.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use iracing::Connection;
+    /// use std::time::Duration;
+    /// 
+    /// let sampler = Connection::new()?.blocking()?;
+    /// let sample = sample.sample(Duration::from_millis(50))?;
+    /// ```
     pub unsafe fn blocking(&self) -> IOResult<telemetry::Blocking> {
         telemetry::Blocking::new(self.location, Self::read_header(self.location))
     }
