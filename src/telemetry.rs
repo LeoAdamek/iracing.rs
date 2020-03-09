@@ -15,6 +15,8 @@ use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::minwinbase::LPSECURITY_ATTRIBUTES;
 use winapi::um::synchapi::{CreateEventW,WaitForSingleObject,ResetEvent};
 
+use serde::{Serialize, Deserialize};
+
 const DATA_EVENT_NAME: &'static str = "Local\\IRSDKDataValidEvent";
 
 #[derive(Copy, Clone, Debug)]
@@ -70,6 +72,17 @@ struct ValueHeader {
     _unit: [c_char; ValueHeader::MAX_VAR_NAME_LENGTH],               // Value units
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ValueDescription {
+    pub value: Value,
+    pub count: usize,
+    pub count_as_time: bool,
+    
+    pub name: String,
+    pub description: String,
+    pub unit: String
+}
+
 ///
 /// Sample represents a single sample of telemetry data from iRacing
 /// either from live telemetry, or from a telemetry file.
@@ -78,73 +91,6 @@ pub struct Sample {
     tick: i32,
     buffer: Vec<u8>,
     values: Vec<ValueHeader>
-}
-
-bitflags! {
-    ///
-    /// Current warnings / status flags of the player's engine.
-    ///
-    #[derive(Default)]
-    pub struct EngineWarnings: u32 {
-        /// Water Temperature too high
-        const WATER_TEMPERATURE = 0x00;
-
-        /// Fuel pressure too low (low fuel)
-        const FUEL_PRESSURE = 0x02;
-        
-        /// Oil pressure too low (low oil)
-        const OIL_PRESSURE = 0x04;
-
-        /// Engine stalled
-        const ENGINE_STALLED = 0x08;
-
-        /// Status: Pit speed limiter is on.
-        const PIT_SPEED_LIMITER = 0x10;
-
-        /// Status: rev limiter is active.
-        const REV_LIMITER_ACTIVE = 0x20;
-    }
-}
-
-bitflags! {
-    ///
-    /// Bitfield of current camera state
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use iracing::telemetry::CameraState;
-    ///
-    /// let very_scenic = CameraState::UI_HIDDEN | CameraState::IS_SCENIC_ACTIVE;
-    /// ```
-    #[derive(Default)]
-    pub struct CameraState: u32 {
-        const IS_SESSION_SCREEN = 0x01;
-        const IS_SCENIC_ACTIVE = 0x02;
-
-        const CAM_TOOL_ACTIVE = 0x04;
-        const UI_HIDDEN = 0x08;
-        const USE_AUTO_SHOT_SELECTION = 0x10;
-        const USE_TEMPORARY_EDITS = 0x20;
-        const USE_KEY_ACCELERATION = 0x40;
-        const USE_KEY_10X_ACCELERATION = 0x80;
-        const USE_MOUSE_AIM_MODE = 0x100;
-    }
-}
-
-bitflags! {
-    ///
-    /// Bitfield of requested services for the next pitstop.
-    #[derive(Default)]
-    pub struct PitServices: u32 {
-        const CHANGE_LEFT_FRONT = 0x01;
-        const CHANGE_RIGHT_FRONT = 0x02;
-        const CHANGE_LEFT_REAR = 0x04;
-        const CHANGE_RIGHT_REAR = 0x08;
-        const REFUEL = 0x10;
-        const SCREEN_TEAROFF = 0x20;
-        const FAST_REPAIR = 0x40;
-    }
 }
 
 /// Telemetry Value
@@ -187,7 +133,7 @@ bitflags! {
 ///     }
 /// };  
 /// ```
-#[derive(Debug,Copy,Clone)]
+#[derive(Debug,Copy,Clone,Serialize,Deserialize)]
 pub enum Value {
     CHAR(u8),
     BOOL(bool),
@@ -232,6 +178,16 @@ impl Into<i32> for Value {
     }
 }
 
+impl Into<u32> for Value {
+    fn into(self) -> u32 {
+        match self {
+            Self::INT(n) => n as u32,
+            Self::BITS(n) => n,
+            _ => 0
+        }
+    }
+}
+
 impl Into<f32> for Value {
     fn into(self) -> f32 {
         match self {
@@ -256,37 +212,6 @@ impl Into<bool> for Value {
             Self::BOOL(b) => b,
             _ => false
         }
-    }
-}
-
-/**
- * Action which will be initiated by the "RESET" button
- */
-#[derive(Debug, Copy, Clone)]
-pub enum ResetAction {
-    ENTER,
-    EXIT,
-    RESET,
-}
-
-impl Default for ResetAction {
-    fn default() -> Self {
-        Self::EXIT
-    }
-}
-
-/**
- * Current units being displayed
- */
-#[derive(Debug, Copy, Clone)]
-pub enum Units {
-    IMPERIAL,
-    METRIC,
-}
-
-impl Default for Units {
-    fn default() -> Self {
-        Self::METRIC
     }
 }
 
@@ -315,6 +240,7 @@ impl ValueHeader {
         let unit = unsafe { CStr::from_ptr(self._unit.as_ptr()) };
         unit.to_string_lossy().to_string()
     }
+
 }
 
 
@@ -434,6 +360,23 @@ impl Sample {
         }
     }
 
+    pub fn all(&self) -> Vec<ValueDescription> {
+
+        let r = self.values.iter().map( |v| {
+            let val = self.value(v);
+
+            ValueDescription{
+                name: v.name().to_owned(),
+                description: v.description().to_owned(),
+                unit: v.unit().to_owned(),
+                count: v.count as usize,
+                count_as_time: v.count_as_time,
+                value: val
+            }
+        });
+
+        r.collect::<Vec<ValueDescription>>()
+    }
 
     ///
     /// Get a Value from the sample.
@@ -452,27 +395,30 @@ impl Sample {
         match self.header_for(name) {
             None => None,
             Some(vh) => {
-               let vs = vh.offset as usize; // Value start
-               let vt = Value::from(vh.value_type);
-               let ve = vs + vt.size(); // Value end = Value Start + Value Size
-                
-               let raw_val = &self.buffer[vs..ve];
-
-               let v: Value;
-
-               v = match vt {
-                   Value::INT(_) => Value::INT( i32::from_le_bytes( raw_val.try_into().unwrap() )),
-                   Value::FLOAT(_) => Value::FLOAT( f32::from_le_bytes( raw_val.try_into().unwrap() )),
-                   Value::DOUBLE(_) => Value::DOUBLE( f64::from_le_bytes( raw_val.try_into().unwrap() )),
-                   Value::BITS(_) => Value::BITS( u32::from_le_bytes( raw_val.try_into().unwrap() )),
-                   Value::CHAR(_) => Value::CHAR(raw_val[0] as u8),
-                   Value::BOOL(_) => Value::BOOL(raw_val[0] > 0),
-                   _ => unimplemented!()
-               };
-
-               Some(v)
+               Some(self.value(&vh))
             }
         }
+    }
+
+    fn value(&self, vh: &ValueHeader) -> Value {
+        let vs = vh.offset as usize; // Value start
+        let vt = Value::from(vh.value_type);
+        let ve = vs + vt.size(); // Value end = Value Start + Value Size
+        
+        let raw_val = &self.buffer[vs..ve];
+
+        let v: Value;
+        v = match vt {
+            Value::INT(_) => Value::INT( i32::from_le_bytes( raw_val.try_into().unwrap() )),
+            Value::FLOAT(_) => Value::FLOAT( f32::from_le_bytes( raw_val.try_into().unwrap() )),
+            Value::DOUBLE(_) => Value::DOUBLE( f64::from_le_bytes( raw_val.try_into().unwrap() )),
+            Value::BITS(_) => Value::BITS( u32::from_le_bytes( raw_val.try_into().unwrap() )),
+            Value::CHAR(_) => Value::CHAR(raw_val[0] as u8),
+            Value::BOOL(_) => Value::BOOL(raw_val[0] > 0),
+            _ => unimplemented!()
+        };
+
+        v
     }
 }
 

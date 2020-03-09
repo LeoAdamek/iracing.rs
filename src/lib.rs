@@ -25,6 +25,8 @@ use winapi::um::memoryapi::{OpenFileMappingW, FILE_MAP_READ, MapViewOfFile};
 
 pub mod session;
 pub mod telemetry;
+pub mod track_surface;
+pub mod states;
 
 pub const TELEMETRY_PATH: &'static str = "Local\\IRSDKMemMapFileName";
 pub const UNLIMITED_LAPS: i32 = 32767;
@@ -154,7 +156,7 @@ impl Connection {
     /// 
     /// let sample = Connection::new()?.telemetry()?;
     /// ``` 
-    pub fn telemetry(&mut self) -> Result<telemetry::Sample, Box<dyn std::error::Error>> {
+    pub fn telemetry(&self) -> Result<telemetry::Sample, Box<dyn std::error::Error>> {
         let header = unsafe { Self::read_header(self.location) };
         header.telemetry(self.location as *const std::ffi::c_void)
     }
@@ -174,8 +176,8 @@ impl Connection {
     /// let sampler = Connection::new()?.blocking()?;
     /// let sample = sample.sample(Duration::from_millis(50))?;
     /// ```
-    pub unsafe fn blocking(&self) -> IOResult<telemetry::Blocking> {
-        telemetry::Blocking::new(self.location, Self::read_header(self.location))
+    pub fn blocking(&self) -> IOResult<telemetry::Blocking> {
+        telemetry::Blocking::new(self.location, unsafe { Self::read_header(self.location) })
     }
 }
 
