@@ -1,6 +1,7 @@
 [package]
 name = "iracing"
 version = "0.1.0"
+description = "Real-time telemetry interface library for iRacing"
 authors = ["Leo Adamek <iracing.rs@breakerofthings.tech>"]
 repository = "https://github.com/LeoAdamek/iracing.rs"
 edition = "2018"
