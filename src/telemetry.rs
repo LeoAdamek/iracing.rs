@@ -133,7 +133,7 @@ pub struct Sample {
 ///     }
 /// };  
 /// ```
-#[derive(Debug,Copy,Clone,Serialize,Deserialize)]
+#[derive(Debug,Clone,Serialize,Deserialize)]
 pub enum Value {
     CHAR(u8),
     BOOL(bool),
@@ -141,7 +141,9 @@ pub enum Value {
     BITS(u32),
     FLOAT(f32),
     DOUBLE(f64),
-    UNKNOWN(())
+    UNKNOWN(()),
+    IntVec(Vec<i32>),
+    FloatVec(Vec<f32>)
 }
 
 impl From<i32> for Value {
@@ -162,7 +164,7 @@ impl Value {
     pub fn size(&self) -> usize {
         match self {
             Self::CHAR(_) | Self::BOOL(_) => 1,
-            Self::INT(_) | Self::BITS(_) | Self::FLOAT(_) => 4,
+            Self::INT(_) | Self::BITS(_) | Self::FLOAT(_) | Self::IntVec(_) | Self::FloatVec(_) => 4,
             Self::DOUBLE(_) => 8,
             Self::UNKNOWN(_) => 1
         }
@@ -403,14 +405,39 @@ impl Sample {
     fn value(&self, vh: &ValueHeader) -> Value {
         let vs = vh.offset as usize; // Value start
         let vt = Value::from(vh.value_type);
-        let ve = vs + vt.size(); // Value end = Value Start + Value Size
+        let vz = vt.size();
+        let ve = vs + vz;
+        let vc = vh.count as usize;
         
         let raw_val = &self.buffer[vs..ve];
 
         let v: Value;
         v = match vt {
-            Value::INT(_) => Value::INT( i32::from_le_bytes( raw_val.try_into().unwrap() )),
-            Value::FLOAT(_) => Value::FLOAT( f32::from_le_bytes( raw_val.try_into().unwrap() )),
+            Value::INT(_) => {
+                if vc == 1 {
+                    Value::INT( i32::from_le_bytes( raw_val.try_into().unwrap() ))
+                } else {
+                    let mut values: Vec<i32> = Vec::with_capacity(vc);
+                    for i in 0..vc-1 {
+                        values.push(i32::from_le_bytes( self.buffer[vs+vz*i .. vs+vz*(i+1) ].try_into().unwrap() ));
+                    }
+                    
+                    Value::IntVec(values)
+                }
+            },
+            Value::FLOAT(_) => {
+                if vc == 1 {
+                    Value::FLOAT( f32::from_le_bytes( raw_val.try_into().unwrap() ))
+                } else {
+                    let mut values: Vec<f32> = Vec::with_capacity(vc);
+                    
+                    for i in 0 .. vc-1 {
+                        values.push(f32::from_le_bytes( self.buffer[vs+vz*i .. vs+vz*(i+1) ].try_into().unwrap() ));
+                    }
+                    
+                    Value::FloatVec(values)
+                }
+            }, 
             Value::DOUBLE(_) => Value::DOUBLE( f64::from_le_bytes( raw_val.try_into().unwrap() )),
             Value::BITS(_) => Value::BITS( u32::from_le_bytes( raw_val.try_into().unwrap() )),
             Value::CHAR(_) => Value::CHAR(raw_val[0] as u8),
