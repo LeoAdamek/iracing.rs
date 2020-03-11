@@ -362,6 +362,14 @@ impl Sample {
         }
     }
 
+    /// Gets all values in the same along with names and descriptions.
+    ///
+    /// Returns a vec of all values in the telemetry sample, along with
+    /// additional metadata such as the name, description, unit and value count.
+    ///
+    /// Note: This method is expensive and will return a large number of values.
+    ///       It should be used primarily for debugging, and for most use cases
+    ///       Selecting only the values required with `get()` is suggested.
     pub fn all(&self) -> Vec<ValueDescription> {
 
         let r = self.values.iter().map( |v| {
