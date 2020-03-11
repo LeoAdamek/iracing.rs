@@ -64,7 +64,7 @@ struct ValueHeader {
     pub value_type: i32,     // Value type
     pub offset: i32,         // Value offset
     pub count: i32,          // Number of values for an array
-    pub count_as_time: bool, // ???
+    pub count_as_time: bool, // Values in array represent timeseries data
 
     _pad: [u8; 3],                                                   // Padding
     _name: [c_char; ValueHeader::MAX_VAR_NAME_LENGTH],               // Value name
