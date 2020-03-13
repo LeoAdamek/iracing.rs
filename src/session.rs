@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// Session Details
 /// 
 /// Top-level details regarding the current session, including race weekend, session and drivers.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionDetails {
     #[serde(rename = "WeekendInfo")]
     pub weekend: WeekendInfo, // Race Weekend Info (track, location, series etc.)
@@ -19,7 +19,7 @@ pub struct SessionDetails {
 ///
 /// Details of the race weekend. Including details of the track being raced,
 /// the weather, racing series, and the rules in play for the session.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct WeekendInfo {
     pub track_name: String, // Track Name
@@ -105,7 +105,7 @@ pub struct WeekendInfo {
     pub options: WeekendOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct WeekendOptions {
     #[serde(rename = "NumStarters")]
@@ -135,7 +135,7 @@ pub struct WeekendOptions {
     pub hardcore_level: i8,        // Hardcoreness
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct SessionInfo {
     #[serde(rename = "NumSessions")]
@@ -143,7 +143,7 @@ pub struct SessionInfo {
     pub sessions: Vec<Session>, // Sessions
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Session {
     #[serde(rename = "SessionNum")]
@@ -166,7 +166,7 @@ pub struct Session {
 ///
 /// Struct contains player driver information, as well as a vector of
 /// other drivers in the session
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DriverInfo {
     #[serde(rename = "DriverCarIdx")]
     pub car_index: usize, // Drivers' Car Index
@@ -230,7 +230,7 @@ pub struct DriverInfo {
 /// Details of all drivers (players) in the session, including the current driver.
 ///
 /// Contains details of the user-profile of the driver, their License class, Safety Rating, and iRating.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Driver {
     #[serde(rename = "CarIdx")]

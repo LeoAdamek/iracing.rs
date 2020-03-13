@@ -16,6 +16,7 @@ use std::slice::from_raw_parts;
 use std::io::Result as IOResult;
 use std::mem::transmute;
 use std::os::windows::raw::HANDLE;
+use std::sync::Mutex;
 use libc::c_void;
 use encoding::{Encoding, DecoderTrap};
 use encoding::all::ISO_8859_1;
@@ -47,6 +48,7 @@ pub const UNLIMITED_TIME: f32 = 604800.0;
 /// let _ = Connection::new().expect("Unable to find telemetry data");
 /// ```
 pub struct Connection {
+    mux: Mutex<()>,
     location: *const c_void,
     header: Header
 }
@@ -82,7 +84,7 @@ impl Connection {
 
         let header = unsafe { Self::read_header(view) };
 
-        return Ok(Connection {location: view, header: header});
+        return Ok(Connection {mux: Mutex::default(), location: view, header: header});
     }
 
     ///
