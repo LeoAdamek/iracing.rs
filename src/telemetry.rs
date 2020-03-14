@@ -12,6 +12,7 @@ use std::time::Duration;
 use libc::c_char;
 use libc::c_void;
 use winapi::um::errhandlingapi::GetLastError;
+use winapi::um::handleapi::CloseHandle;
 use winapi::um::minwinbase::LPSECURITY_ATTRIBUTES;
 use winapi::um::synchapi::{CreateEventW,WaitForSingleObject,ResetEvent};
 
@@ -482,6 +483,12 @@ impl Error for TelemetryError {
 }
 
 
+impl Drop for Blocking {
+    fn drop(&mut self) {
+        self.close().expect("Unable to close event handle");
+    }
+}
+
 impl Blocking {
     pub fn new(location: *const c_void, head: Header) -> std::io::Result<Self> {
         let values = head.get_var_header(location).to_vec();
@@ -506,6 +513,18 @@ impl Blocking {
            values: values,
            event_handle: handle
         }) 
+    }
+
+    pub fn close(&self) -> std::io::Result<()> {
+        let succ = unsafe { CloseHandle(self.event_handle) };
+
+        if succ != 0 {
+            Ok(())
+        } else {
+            let err: i32 = unsafe { GetLastError() as i32 };
+
+            Err(std::io::Error::from_raw_os_error(err))
+        }
     }
 
     ///

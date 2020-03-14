@@ -22,6 +22,7 @@ use encoding::{Encoding, DecoderTrap};
 use encoding::all::ISO_8859_1;
 use winapi::shared::minwindef::LPVOID;
 use winapi::um::errhandlingapi::GetLastError;
+use winapi::um::handleapi::CloseHandle;
 use winapi::um::memoryapi::{OpenFileMappingW, FILE_MAP_READ, MapViewOfFile};
 
 pub mod session;
@@ -49,7 +50,7 @@ pub const UNLIMITED_TIME: f32 = 604800.0;
 /// ```
 pub struct Connection {
     mux: Mutex<()>,
-    location: *const c_void,
+    location: *mut c_void,
     header: Header
 }
 
@@ -180,6 +181,24 @@ impl Connection {
     /// ```
     pub fn blocking(&self) -> IOResult<telemetry::Blocking> {
         telemetry::Blocking::new(self.location, unsafe { Self::read_header(self.location) })
+    }
+
+    pub fn close(&self) -> IOResult<()> {
+        let succ = unsafe { CloseHandle(self.location) };
+
+        if succ != 0 {
+            Ok(())
+        } else {
+            let errno: i32 = unsafe { GetLastError() as i32 };
+
+            Err(Error::from_raw_os_error(errno))
+        }
+    }
+}
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        self.close().expect("Unable to close telem handle");
     }
 }
 

@@ -1,6 +1,6 @@
 [package]
 name = "iracing"
-version = "0.1.2"
+version = "0.2.0"
 description = "Real-time telemetry interface library for iRacing"
 authors = ["Leo Adamek <iracing.rs@breakerofthings.tech>"]
 repository = "https://github.com/LeoAdamek/iracing.rs"
@@ -21,7 +21,7 @@ rpath = false
 [dependencies]
 libc = "0.2"
 bitflags = "1.2"
-winapi = {version = "0.3.8", features = ["std","memoryapi","winnt","errhandlingapi","synchapi"] }
+winapi = {version = "0.3.8", features = ["std","memoryapi","winnt","errhandlingapi","synchapi","handleapi"] }
 serde = {version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
 encoding = "0.2.33"
