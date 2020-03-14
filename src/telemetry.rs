@@ -482,13 +482,6 @@ impl Display for TelemetryError {
 impl Error for TelemetryError {
 }
 
-
-impl Drop for Blocking {
-    fn drop(&mut self) {
-        self.close().expect("Unable to close event handle");
-    }
-}
-
 impl Blocking {
     pub fn new(location: *const c_void, head: Header) -> std::io::Result<Self> {
         let values = head.get_var_header(location).to_vec();
