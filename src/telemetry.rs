@@ -516,6 +516,10 @@ impl Blocking {
     }
 
     pub fn close(&self) -> std::io::Result<()> {
+        if self.event_handle.is_null() {
+            return Ok(());
+        }
+
         let succ = unsafe { CloseHandle(self.event_handle) };
 
         if succ != 0 {
