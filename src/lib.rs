@@ -196,12 +196,6 @@ impl Connection {
     }
 }
 
-impl Drop for Connection {
-    fn drop(&mut self) {
-        self.close().expect("Unable to close telem handle");
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
