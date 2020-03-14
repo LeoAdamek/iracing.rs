@@ -515,12 +515,24 @@ impl Blocking {
 
         let succ = unsafe { CloseHandle(self.event_handle) };
 
-        if succ != 0 {
-            Ok(())
-        } else {
+        if succ == 0 {
+            let err: i32 = unsafe { GetLastError() as i32 };
+
+            return Err(std::io::Error::from_raw_os_error(err));
+        }
+
+        if self.origin.is_null() {
+            return Ok(());
+        }
+
+        let succ = unsafe { CloseHandle(self.origin as HANDLE) };
+
+        if succ == 0 {
             let err: i32 = unsafe { GetLastError() as i32 };
 
             Err(std::io::Error::from_raw_os_error(err))
+        } else {
+            Ok(())
         }
     }
 
