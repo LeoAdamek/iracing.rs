@@ -159,6 +159,28 @@ pub struct Session {
 
     #[serde(rename = "SessionTrackRubberState")]
     pub track_rubber_state: String,
+
+    #[serde(rename = "ResultsPositions")]
+    pub results: Vec<SessionResult>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct SessionResult {
+    pub position: i32,
+    pub class_position: i32,
+    pub car_idx: i32,
+    pub lap: i32,
+    pub time: f32,
+    pub fastest_lap: i32,
+    pub fastest_time: f32,
+    pub last_time: f32,
+    pub laps_led: i32,
+    pub laps_complete: i32,
+    pub laps_driven: f32,
+    pub incidents: i32,
+    pub reason_out_id: i32,
+    pub reason_out_str: String
 }
 
 ///

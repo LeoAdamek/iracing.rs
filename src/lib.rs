@@ -29,6 +29,7 @@ pub mod session;
 pub mod telemetry;
 pub mod track_surface;
 pub mod states;
+pub mod setups;
 
 pub const TELEMETRY_PATH: &'static str = "Local\\IRSDKMemMapFileName";
 pub const UNLIMITED_LAPS: i32 = 32767;

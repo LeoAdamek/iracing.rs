@@ -1,7 +1,7 @@
 [package]
 name = "iracing"
-version = "0.2.6"
-description = "Real-time telemetry interface library for iRacing"
+version = "0.2.8"
+description = "Rust interface for Live Telemetry, Session Data, and Setup Files for iRacing"
 authors = ["Leo Adamek <iracing.rs@breakerofthings.tech>"]
 repository = "https://github.com/LeoAdamek/iracing.rs"
 edition = "2018"

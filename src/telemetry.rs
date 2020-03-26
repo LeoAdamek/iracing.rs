@@ -144,7 +144,8 @@ pub enum Value {
     DOUBLE(f64),
     UNKNOWN(()),
     IntVec(Vec<i32>),
-    FloatVec(Vec<f32>)
+    FloatVec(Vec<f32>),
+    BoolVec(Vec<bool>)
 }
 
 impl From<i32> for Value {
@@ -164,7 +165,7 @@ impl From<i32> for Value {
 impl Value {
     pub fn size(&self) -> usize {
         match self {
-            Self::CHAR(_) | Self::BOOL(_) => 1,
+            Self::CHAR(_) | Self::BOOL(_) | Self::BoolVec(_) => 1,
             Self::INT(_) | Self::BITS(_) | Self::FLOAT(_) | Self::IntVec(_) | Self::FloatVec(_) => 4,
             Self::DOUBLE(_) => 8,
             Self::UNKNOWN(_) => 1
@@ -450,7 +451,19 @@ impl Sample {
             Value::DOUBLE(_) => Value::DOUBLE( f64::from_le_bytes( raw_val.try_into().unwrap() )),
             Value::BITS(_) => Value::BITS( u32::from_le_bytes( raw_val.try_into().unwrap() )),
             Value::CHAR(_) => Value::CHAR(raw_val[0] as u8),
-            Value::BOOL(_) => Value::BOOL(raw_val[0] > 0),
+            Value::BOOL(_) => {
+                if vc == 1 {
+                    Value::BOOL(raw_val[0] > 0)
+                } else {
+                    let mut values: Vec<bool> = Vec::with_capacity(vc);
+
+                    for i in 0..vc-1 {
+                        values.push(self.buffer[vs + i] > 0);
+                    }
+
+                    Value::BoolVec(values)
+                }
+            }
             _ => unimplemented!()
         };
 
