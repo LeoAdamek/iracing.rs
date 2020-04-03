@@ -173,39 +173,48 @@ impl Value {
     }
 }
 
-impl Into<i32> for Value {
-    fn into(self) -> i32 {
+impl TryInto<i32> for Value {
+    type Error = &'static str;
+
+    fn try_into(self) -> Result<i32, Self::Error> {
         match self {
-            Self::INT(n) => n,
-            _ => 0
+            Self::INT(n) => Ok(n),
+            _ => Err("Value is not a signed 4-byte integer")
         }
     }
 }
 
-impl Into<u32> for Value {
-    fn into(self) -> u32 {
+impl TryInto<u32> for Value {
+    type Error = &'static str;
+    
+    fn try_into(self) -> Result<u32, Self::Error> {
         match self {
-            Self::INT(n) => n as u32,
-            Self::BITS(n) => n,
-            _ => 0
+            Self::INT(n) => Ok(n as u32),
+            Self::BITS(n) => Ok(n),
+            _ => Err("Value is not a 4-byte integer")
         }
     }
 }
 
-impl Into<f32> for Value {
-    fn into(self) -> f32 {
+impl TryInto<f32> for Value {
+    type Error = &'static str;
+
+    fn try_into(self) -> Result<f32, Self::Error> {
         match self {
-            Self::FLOAT(n) => n,
-            _ => 0.0
+            Self::FLOAT(n) => Ok(n),
+            _ => Err("Value is not a float")
         }
     }
 }
 
-impl Into<f64> for Value {
-    fn into(self) -> f64 {
+impl TryInto<f64> for Value {
+    type Error = &'static str;
+
+    fn try_into(self) -> Result<f64, Self::Error> {
         match self {
-            Self::DOUBLE(n) => n,
-            _ => 0.0
+            Self::DOUBLE(n) => Ok(n),
+            Self::FLOAT(f) => Ok(f as f64),
+            _ => Err("Value is not a float or double")
         }
     }
 }
@@ -215,6 +224,15 @@ impl Into<bool> for Value {
         match self {
             Self::BOOL(b) => b,
             _ => false
+        }
+    }
+}
+
+impl Into<Vec<bool>> for Value {
+    fn into(self) -> Vec<bool> {
+        match self {
+            Self::BoolVec(b) => b,
+            _ => vec![false]
         }
     }
 }
@@ -395,20 +413,17 @@ impl Sample {
     /// 
     /// Read a single varialbe from the telemetry sample.
     /// 
-    /// Returns `None` if the value is not present in the sample.
-    /// Returns `Some(Value)` if the telemetry value is available.
-    /// Panics if an unknown data-type is encountered.
+    /// Returns `Ok(Value)` if the telemetry value is available.
+    /// Returns `Err(String)` if the value cannot be found.
     /// 
     /// # Parameters
     /// 
     /// `name`  Name of the telemetry variable to get
     ///   - see the iRacing Telemtry documentation for a complete list of possible values
-    pub fn get(&self, name: &'static str) -> Option<Value> {
+    pub fn get(&self, name: &'static str) -> Result<Value, String> {
         match self.header_for(name) {
-            None => None,
-            Some(vh) => {
-               Some(self.value(&vh))
-            }
+            None => Err(format!("No value '{}' found", name)),
+            Some(vh) => Ok(self.value(&vh))
         }
     }
 

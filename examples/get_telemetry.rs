@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use iracing::Connection;
 use iracing::states::Flags;
 use std::time::Duration;
@@ -19,12 +20,12 @@ pub fn main() {
             }
         };
 
-        let rpm: f32 = telem.get("RPM").unwrap().into();
-        let gear: i32 = telem.get("Gear").unwrap().into();
-        let timecode: f64 = telem.get("SessionTime").unwrap().into();
-        let lap: i32 = telem.get("Lap").unwrap().into();
+        let rpm: f32 = telem.get("RPM").unwrap().try_into().unwrap();
+        let gear: i32 = telem.get("Gear").unwrap().try_into().unwrap();
+        let timecode: f64 = telem.get("SessionTime").unwrap().try_into().unwrap();
+        let lap: i32 = telem.get("Lap").unwrap().try_into().unwrap();
 
-        let flags = Flags::from_bits( telem.get("SessionState").unwrap().into() ).unwrap();
+        let flags = Flags::from_bits( telem.get("SessionState").unwrap().try_into().unwrap() ).unwrap();
 
 
         print!("Lap {lap:>3}: {time:>5.3}s Gear {gear} @ {rpm:>5.0} RPM ", lap = lap, gear = gear, rpm = rpm, time = timecode);
@@ -33,9 +34,7 @@ pub fn main() {
             print!("{:>8}", " SHIFT ");
         }
 
-        print!("{:#?}", flags);
-
-        println!("");
+        println!("{:#?}({:})", flags, flags.bits() );
     }
 
 }
