@@ -7,7 +7,11 @@ extern crate serde_yaml;
 extern crate encoding;
 extern crate libc;
 
-use crate::telemetry::Header;
+pub mod session;
+pub mod telemetry;
+pub mod track_surface;
+pub mod states;
+
 use crate::session::*;
 use serde_yaml::from_str as yaml_from;
 use std::ptr::null;
@@ -15,26 +19,32 @@ use std::io::Error;
 use std::slice::from_raw_parts;
 use std::io::Result as IOResult;
 use std::mem::transmute;
-use std::os::windows::raw::HANDLE;
 use std::sync::Mutex;
 use libc::c_void;
 use encoding::{Encoding, DecoderTrap};
 use encoding::all::ISO_8859_1;
+
+#[cfg(target_os="windows")]
+use crate::telemetry::Header;
+
+#[cfg(target_os="windows")]
+use std::os::windows::raw::HANDLE;
+#[cfg(target_os="windows")]
 use winapi::shared::minwindef::LPVOID;
+#[cfg(target_os="windows")]
 use winapi::um::errhandlingapi::GetLastError;
+#[cfg(target_os="windows")]
 use winapi::um::handleapi::CloseHandle;
+#[cfg(target_os="windows")]
 use winapi::um::memoryapi::{OpenFileMappingW, FILE_MAP_READ, MapViewOfFile};
 
-pub mod session;
-pub mod telemetry;
-pub mod track_surface;
-pub mod states;
-pub mod setups;
 
 pub const TELEMETRY_PATH: &'static str = "Local\\IRSDKMemMapFileName";
 pub const UNLIMITED_LAPS: i32 = 32767;
 pub const UNLIMITED_TIME: f32 = 604800.0;
 
+
+#[cfg(target_os="windows")]
 ///
 /// iRacing live telemetry and session data connection.
 /// 
@@ -55,6 +65,7 @@ pub struct Connection {
     header: Header
 }
 
+#[cfg(target_os = "windows")]
 impl Connection {
     pub fn new() -> IOResult<Connection> {
         let mut path: Vec<u16> = TELEMETRY_PATH.encode_utf16().collect();
@@ -214,3 +225,4 @@ mod tests {
         Connection::new().expect("Unable to open telemetry").telemetry().expect("Couldn't get latest telem");
     }
 }
+

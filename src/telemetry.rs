@@ -1,3 +1,5 @@
+#![cfg(target_os = "windows")]
+
 use std::convert::TryInto;
 use std::default::Default;
 use std::error::Error;

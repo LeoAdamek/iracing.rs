@@ -7,17 +7,6 @@ repository = "https://github.com/LeoAdamek/iracing.rs"
 edition = "2018"
 license = "MIT"
 
-[profile.bench]
-opt-level = 3
-debug = false
-debug-assertions = false
-overflow-checks = false
-lto = false
-panic = 'unwind'    # This setting is always ignored.
-incremental = false
-codegen-units = 16
-rpath = false
-
 [dependencies]
 libc = "0.2"
 bitflags = "1.2"
