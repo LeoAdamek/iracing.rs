@@ -1,5 +1,5 @@
 use std::convert::TryInto;
-use iracing::Connection;
+use iracing::telemetry::Connection;
 use iracing::states::Flags;
 use std::time::Duration;
 

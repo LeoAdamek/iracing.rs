@@ -1,5 +1,5 @@
 
-use iracing::Connection;
+use iracing::telemetry::Connection;
 
 pub fn main() {    
     let mut conn = Connection::new().expect("Unable to open telemetry");

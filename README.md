@@ -3,6 +3,8 @@ iRacing.rs
 
 Live telemetry and session data interface for Rust.
 
+Features are available on all platforms by default, except for live telemetry which is available only on Windows and requires the `telemetry` feature to be enabled.
+
 Usage
 -----
 
@@ -10,8 +12,7 @@ See further examples in [/examples](examples/)
 
 ```rust
 extern crate iracing;
-use iracing::Connection;
-use iracing::telemetry::TelemetryError;
+use iracing::telemetry::{Connection, TelemetryError};
 
 pub fn main() {
 

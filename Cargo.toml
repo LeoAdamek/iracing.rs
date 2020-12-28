@@ -1,19 +1,23 @@
 [package]
 name = "iracing"
-version = "0.4.1"
+version = "0.5.0"
 description = "Rust interface for Live Telemetry, Session Data, and Setup Files for iRacing"
 authors = ["Leo Adamek <iracing.rs@breakerofthings.tech>"]
 repository = "https://github.com/LeoAdamek/iracing.rs"
 edition = "2018"
 license = "MIT"
 
+[features]
+telemetry = ["winapi","libc"]
+
 [dependencies]
-libc = "0.2"
-bitflags = "1.2"
-winapi = {version = "0.3.8", features = ["std","memoryapi","winnt","errhandlingapi","synchapi","handleapi"] }
 serde = {version = "1.0", features = ["derive"] }
+bitflags = "1.2"
 serde_yaml = "0.8"
 encoding = "0.2.33"
+libc = { version = "0.2", optional = true }
+winapi = {version = "0.3.9", features = ["std","memoryapi","winnt","errhandlingapi","synchapi","handleapi"], optional = true }
+
 
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"

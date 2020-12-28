@@ -1,4 +1,4 @@
-use iracing::Connection;
+use iracing::telemetry::Connection;
 use serde_yaml::to_string;
 
 pub fn main() {
