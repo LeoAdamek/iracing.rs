@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ufwb version="1.17">
+    <grammar name="iRacing Replay Grammar" start="id:1" author="Leo" fileextension="rpy">
+        <description>Grammar for iRacing Replays</description>
+        <structure name="RPY File" id="1" length="0" alignment="4" encoding="ISO_8859-1:1987" endian="little" signed="no">
+            <structure name="Header" id="2">
+                <string name="File Identifier" mustmatch="yes" id="3" fillcolor="FF0000" type="fixed-length" length="4" encoding="ISO_8859-1:1987">
+                    <fixedvalues>
+                        <fixedvalue name="File ID" value="YLPR"/>
+                    </fixedvalues>
+                </string>
+                <number name="Unknown Number #1" id="4" type="integer" length="8"/>
+                <number name="Unknown Number #2" id="5" type="integer" length="4"/>
+                <string name="String &quot;DHPR&quot;" mustmatch="yes" id="6" fillcolor="CCCCCC" type="fixed-length" length="4" encoding="ISO_8859-1:1987">
+                    <fixedvalues>
+                        <fixedvalue name="&quot;DHPR&quot;" value="DHPR"/>
+                    </fixedvalues>
+                </string>
+                <binary name="&lt;Binary Fill Bytes&gt;" id="7" unused="yes" length="24"/>
+                <number name="User ID" id="8" fillcolor="55FF7F" type="integer" length="4" signed="yes" minval="-1" maxval="0">
+                    <description>ID of the user who created the file</description>
+                </number>
+                <number name="User_Car_ID" id="9" fillcolor="98E0FF" type="integer" length="8">
+                    <description>Asset ID of the car being used</description>
+                </number>
+                <string name="User Name" id="10" fillcolor="44CC64" type="fixed-length" length="64" encoding="ISO_8859-1:1987">
+                    <description>Name of the user who created the replay</description>
+                </string>
+                <binary name="&lt;Binary Fill Bytes-2&gt;" id="11" unused="yes" length="8"/>
+                <number name="User_Entry_Length" id="12" fillcolor="CAFF8C" type="integer" length="4" endian="little" minval="0" maxval="64">
+                    <description>Number of entires in `UserList`</description>
+                </number>
+                <string name="Timestamp" id="13" fillcolor="55AAFF" type="fixed-length" length="32" encoding="ISO_8859-1:1987">
+                    <description>Timestamp of recording</description>
+                </string>
+                <binary name="Zero-fill" id="14" fillcolor="636363" length="120">
+                    <fixedvalues>
+                        <fixedvalue name="Zero" value="00"/>
+                    </fixedvalues>
+                </binary>
+                <structure name="UserEntries" id="67">
+                    <structure name="UserListEntry" id="15" length="12" alignment="0" repeat="id:12" repeatmax="User_Entry_Length" endian="little" strokecolor="0EE15B">
+                        <number name="UserID" id="16" fillcolor="55FF7F" type="integer" length="4" signed="yes" endian="little" minval="-1" maxval="0"/>
+                        <number name="CarID" id="17" fillcolor="98E0FF" type="integer" length="4" endian="little"/>
+                        <number name="CarClassID" id="18" fillcolor="33C9FF" type="integer" length="4"/>
+                    </structure>
+                </structure>
+                <number name="Asset_List_Length" id="20" fillcolor="DC93DC" type="integer" length="4" maxval="1024">
+                    <description>Asset List Length</description>
+                </number>
+                <string name="Asset List" id="21" fillcolor="FFAAFF" type="fixed-length" length="Asset_List_Length">
+                    <description>List of assets required by the simulator in order to load this file</description>
+                </string>
+                <number name="Const_2" id="22" fillcolor="60BDEE" type="integer" length="1">
+                    <fixedvalues>
+                        <fixedvalue name="Const2" value="2"/>
+                    </fixedvalues>
+                </number>
+                <binary name="Padding" mustmatch="yes" id="23" fillcolor="989898" repeatmin="5" repeatmax="5" length="1">
+                    <fixedvalues>
+                        <fixedvalue name="Zero" value="00"/>
+                    </fixedvalues>
+                </binary>
+                <binary name="Alignment Padding" mustmatch="yes" id="24" fillcolor="A2A2A2" repeatmin="0" repeatmax="3" length="1">
+                    <fixedvalues>
+                        <fixedvalue name="PaddingValue" value="20"/>
+                    </fixedvalues>
+                </binary>
+                <string name="Const_FNKW" id="25" fillcolor="B0A87C" type="fixed-length" length="4">
+                    <fixedvalues>
+                        <fixedvalue name="FNKW" value="FNKW"/>
+                    </fixedvalues>
+                </string>
+                <number name="Const5" mustmatch="yes" id="26" fillcolor="645F46" type="integer" length="4">
+                    <fixedvalues>
+                        <fixedvalue name="Const5" value="5"/>
+                    </fixedvalues>
+                </number>
+                <number name="Const2380" id="27" fillcolor="B0A87C" type="integer" length="4">
+                    <fixedvalues>
+                        <fixedvalue name="Const2380" value="2380"/>
+                    </fixedvalues>
+                </number>
+                <number name="Const4" id="28" fillcolor="968F6A" type="integer" length="4">
+                    <fixedvalues>
+                        <fixedvalue name="Const4" value="4"/>
+                    </fixedvalues>
+                </number>
+                <binary name="UnknownBytes" id="29" fillcolor="969696" length="12"/>
+                <number name="SessionID" id="30" fillcolor="FFFF00" type="integer" length="4"/>
+                <binary name="UnknownBytes_2" id="31" fillcolor="97CCD4" length="116"/>
+                <string name="TrackLayoutName" id="32" fillcolor="FFAE74" type="fixed-length" length="64">
+                    <description>Track name, with optional layout separated with `\`</description>
+                </string>
+                <binary name="UnknownBytes_3" id="33" length="128"/>
+                <number name="SessionPhasesCount" id="34" fillcolor="1C82FF" type="integer" length="4"/>
+                <structure name="SessionPhaseInfo" id="35" length="64" alignment="0" repeat="id:34" repeatmax="SessionPhasesCount">
+                    <string name="PhaseName" id="36" fillcolor="80B9FF" type="fixed-length" length="32"/>
+                    <number name="PhaseDataOffset" id="37" fillcolor="3542FF" type="integer" length="4"/>
+                </structure>
+                <structure name="LargePadding" id="65">
+                    <binary name="LargePaddingContent" mustmatch="yes" id="39" fillcolor="4D4D4D" repeatmax="1024" length="4">
+                        <fixedvalues>
+                            <fixedvalue name="Zero" value="00000000"/>
+                        </fixedvalues>
+                    </binary>
+                </structure>
+                <string name="StartOfEntryList" mustmatch="yes" id="40" fillcolor="FFDFB9" type="fixed-length" length="4">
+                    <fixedvalues>
+                        <fixedvalue name="StartOfEntryList" value="SLRD"/>
+                    </fixedvalues>
+                </string>
+                <number name="Const1" mustmatch="yes" id="41" fillcolor="939393" type="integer" length="4">
+                    <fixedvalues>
+                        <fixedvalue name="Const1" value="1"/>
+                    </fixedvalues>
+                </number>
+                <number name="UnknownNumber" id="42" fillcolor="FFE6C7" type="integer" length="4"/>
+                <structure name="Entrants" id="69">
+                    <structure name="Entrant" id="43" length="652" alignment="0" repeat="id:12" repeatmax="64" encoding="ISO_8859-1:1987" endian="little" signed="no" strokecolor="F70000">
+                        <string name="EntrantPhase" id="44" fillcolor="FF8878" type="fixed-length" length="4"/>
+                        <number name="PhaseNumber" id="45" fillcolor="FFA357" type="integer" length="4"/>
+                        <number name="Unknown Number #2" id="46" type="integer" length="4"/>
+                        <number name="CarIdx" id="47" fillcolor="C96BFF" type="integer" length="4"/>
+                        <number name="EntrantUserID" id="48" fillcolor="55FF7F" type="integer" length="4" signed="yes"/>
+                        <number name="Unknown" id="49" type="integer" length="4"/>
+                        <number name="Car Number" id="50" fillcolor="DA8EFF" type="integer" length="4"/>
+                        <string name="Entrant Name" id="51" fillcolor="44CC64" type="fixed-length" length="64"/>
+                        <number name="CarClassID" id="52" fillcolor="33C9FF" type="integer" length="4"/>
+                        <number name="CarID" id="53" fillcolor="98E0FF" type="integer" length="4"/>
+                        <string name="Car Name" id="54" fillcolor="99BBC8" type="fixed-length" length="64"/>
+                        <string name="Colour #1" id="55" fillcolor="56BFA8" type="fixed-length" length="6"/>
+                        <binary name="Padding" id="56" fillcolor="5A5A5A" length="10"/>
+                        <structure name="PaintDefinition" id="57" length="32" repeatmin="4" repeatmax="4">
+                            <string name="PaintPattern" id="58" fillcolor="63FFD8" type="delimiter-terminated" delimiter="2C"/>
+                            <string name="PaintColor" id="59" fillcolor="56BFA8" repeatmin="3" repeatmax="3" type="fixed-length" length="7"/>
+                            <binary name="Padding" id="60" fillcolor="666666" length="remaining"/>
+                        </structure>
+                    </structure>
+                </structure>
+            </structure>
+        </structure>
+    </grammar>
+</ufwb>

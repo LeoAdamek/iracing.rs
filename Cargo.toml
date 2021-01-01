@@ -15,9 +15,9 @@ serde = {version = "1.0", features = ["derive"] }
 bitflags = "1.2"
 serde_yaml = "0.8"
 encoding = "0.2.33"
+chrono = "0.4.19"
 libc = { version = "0.2", optional = true }
 winapi = {version = "0.3.9", features = ["std","memoryapi","winnt","errhandlingapi","synchapi","handleapi"], optional = true }
-
 
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"
