@@ -66,8 +66,6 @@ impl Default for Header {
 impl Header {
     /// Load Header data form a `Read`
     pub fn from<R: Read>(mut r: R) -> IOResult<Self> {
-        /// Load eader data form a `Read`
-
         let mut result = Self::default();
 
         // Skip 10 words
