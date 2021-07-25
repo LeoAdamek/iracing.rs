@@ -630,7 +630,6 @@ impl Blocking {
     }
 }
 
-#[cfg(target_os = "windows")]
 ///
 /// iRacing live telemetry and session data connection.
 ///
@@ -651,7 +650,6 @@ pub struct Connection {
     header: Header,
 }
 
-#[cfg(target_os = "windows")]
 impl Connection {
     pub fn new() -> IOResult<Connection> {
         let mut path: Vec<u16> = TELEMETRY_PATH.encode_utf16().collect();
