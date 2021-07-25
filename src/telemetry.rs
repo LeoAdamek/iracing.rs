@@ -1,36 +1,29 @@
+use crate::session::*;
+use encoding::all::ISO_8859_1;
+use encoding::{DecoderTrap, Encoding};
+use libc::{c_char, c_void};
+use serde::{Deserialize, Serialize};
+use serde_yaml::from_str as yaml_from;
 use std::convert::TryInto;
 use std::default::Default;
 use std::error::Error;
 use std::ffi::CStr;
 use std::fmt;
 use std::fmt::Display;
+use std::io::Result as IOResult;
+use std::mem::transmute;
 use std::os::windows::raw::HANDLE;
-use std::ptr::null;
 use std::slice::from_raw_parts;
 use std::time::Duration;
-
-use libc::c_char;
-use libc::c_void;
+use winapi::shared::minwindef::LPVOID;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::handleapi::CloseHandle;
+use winapi::um::memoryapi::{MapViewOfFile, OpenFileMappingW, FILE_MAP_READ};
 use winapi::um::minwinbase::LPSECURITY_ATTRIBUTES;
 use winapi::um::synchapi::{CreateEventW, ResetEvent, WaitForSingleObject};
 
-use serde::{Deserialize, Serialize};
-
-use crate::session::*;
-
-use encoding::all::ISO_8859_1;
-use encoding::{DecoderTrap, Encoding};
-use serde_yaml::from_str as yaml_from;
-use std::io::Result as IOResult;
-use std::mem::transmute;
-use std::sync::Mutex;
-use winapi::shared::minwindef::LPVOID;
-use winapi::um::memoryapi::{MapViewOfFile, OpenFileMappingW, FILE_MAP_READ};
-
 /// System path where the shared memory map is located.
-pub const TELEMETRY_PATH: &'static str = "Local\\IRSDKMemMapFileName";
+pub const TELEMETRY_PATH: &str = r"Local\IRSDKMemMapFileName";
 
 /// Magic number specifying an unlimited number of laps
 pub const UNLIMITED_LAPS: i32 = 32767;
@@ -38,7 +31,7 @@ pub const UNLIMITED_LAPS: i32 = 32767;
 /// Magic number specifying unlimited time
 pub const UNLIMITED_TIME: f32 = 604800.0;
 
-const DATA_EVENT_NAME: &'static str = "Local\\IRSDKDataValidEvent";
+const DATA_EVENT_NAME: &str = r"Local\IRSDKDataValidEvent";
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -66,7 +59,6 @@ pub struct Header {
 ///
 pub struct Blocking {
     origin: *const c_void,
-    values: Vec<ValueHeader>,
     header: Header,
     event_handle: HANDLE,
 }
@@ -241,19 +233,19 @@ impl TryInto<f64> for Value {
     }
 }
 
-impl Into<bool> for Value {
-    fn into(self) -> bool {
-        match self {
-            Self::BOOL(b) => b,
+impl From<Value> for bool {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::BOOL(b) => b,
             _ => false,
         }
     }
 }
 
-impl Into<Vec<bool>> for Value {
-    fn into(self) -> Vec<bool> {
-        match self {
-            Self::BoolVec(b) => b,
+impl From<Value> for Vec<bool> {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::BoolVec(b) => b,
             _ => vec![false],
         }
     }
@@ -343,7 +335,7 @@ impl Header {
             }
         }
 
-        return (latest_tick, buffer);
+        (latest_tick, buffer)
     }
 
     fn var_buffer(&self, lb: ValueBuffer, from_loc: *const c_void) -> &[u8] {
@@ -359,7 +351,7 @@ impl Header {
 
         let content = unsafe { from_raw_parts(header_loc as *const ValueHeader, n_vars) };
 
-        content.clone()
+        content
     }
 
     pub fn telemetry(&self, from_loc: *const c_void) -> Result<Sample, Box<dyn std::error::Error>> {
@@ -378,9 +370,9 @@ impl Header {
 impl Sample {
     fn new(tick: i32, header: Vec<ValueHeader>, buffer: Vec<u8>) -> Self {
         Sample {
-            tick: tick,
+            tick,
             values: header,
-            buffer: buffer,
+            buffer,
         }
     }
 
@@ -396,10 +388,7 @@ impl Sample {
     ///
     /// Check if a given variable is available in the telemetry sample
     pub fn has(&self, name: &'static str) -> bool {
-        match self.header_for(name) {
-            Some(_) => true,
-            None => false,
-        }
+        self.header_for(name).is_some()
     }
 
     /// Gets all values in the same along with names and descriptions.
@@ -415,9 +404,9 @@ impl Sample {
             let val = self.value(v);
 
             ValueDescription {
-                name: v.name().to_owned(),
-                description: v.description().to_owned(),
-                unit: v.unit().to_owned(),
+                name: v.name(),
+                description: v.description(),
+                unit: v.unit(),
                 count: v.count as usize,
                 count_as_time: v.count_as_time,
                 value: val,
@@ -527,7 +516,7 @@ pub enum TelemetryError {
 impl Display for TelemetryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ABANDONED => write!(f, "{}", "Abandoned"),
+            Self::ABANDONED => write!(f, "Abandoned"),
             Self::TIMEOUT(ms) => write!(f, "Timeout after {}ms", ms),
             Self::UNKNOWN(v) => write!(f, "Unknown error code = {:x?}", v),
         }
@@ -538,8 +527,6 @@ impl Error for TelemetryError {}
 
 impl Blocking {
     pub fn new(location: *const c_void, head: Header) -> std::io::Result<Self> {
-        let values = head.get_var_header(location).to_vec();
-
         let mut event_name: Vec<u16> = DATA_EVENT_NAME.encode_utf16().collect();
         event_name.push(0);
 
@@ -547,7 +534,7 @@ impl Blocking {
 
         let handle: HANDLE = unsafe { CreateEventW(sc, 0, 0, event_name.as_ptr()) };
 
-        if null() == handle {
+        if handle.is_null() {
             let errno: i32 = unsafe { GetLastError() as i32 };
 
             return Err(std::io::Error::from_raw_os_error(errno));
@@ -556,7 +543,6 @@ impl Blocking {
         Ok(Blocking {
             origin: location,
             header: head,
-            values: values,
             event_handle: handle,
         })
     }
@@ -645,9 +631,7 @@ impl Blocking {
 /// let _ = Connection::new().expect("Unable to find telemetry data");
 /// ```
 pub struct Connection {
-    mux: Mutex<()>,
     location: *mut c_void,
-    header: Header,
 }
 
 impl Connection {
@@ -662,7 +646,7 @@ impl Connection {
             mapping = OpenFileMappingW(FILE_MAP_READ, 0, path.as_ptr());
         };
 
-        if null() == mapping {
+        if mapping.is_null() {
             unsafe {
                 errno = GetLastError() as i32;
             }
@@ -676,7 +660,7 @@ impl Connection {
             view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
         }
 
-        if null() == view {
+        if view.is_null() {
             unsafe {
                 errno = GetLastError() as i32;
             }
@@ -684,13 +668,7 @@ impl Connection {
             return Err(std::io::Error::from_raw_os_error(errno));
         }
 
-        let header = unsafe { Self::read_header(view) };
-
-        return Ok(Connection {
-            mux: Mutex::default(),
-            location: view,
-            header: header,
-        });
+        Ok(Connection { location: view })
     }
 
     ///
@@ -709,11 +687,9 @@ impl Connection {
     ///
     /// println!("Data Version: {}", header.version);
     /// ```
-    pub unsafe fn read_header(from: *const c_void) -> Header {
+    unsafe fn read_header(from: *const c_void) -> Header {
         let raw_header: *const Header = transmute(from);
-        let h: Header = *raw_header;
-
-        h.clone()
+        *raw_header
     }
 
     ///
