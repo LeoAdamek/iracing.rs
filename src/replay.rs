@@ -1,5 +1,3 @@
-extern crate chrono;
-
 use chrono::NaiveDateTime;
 use std::io;
 use std::io::Read;
