@@ -774,20 +774,22 @@ mod tests {
 
     #[test]
     fn test_session_info() {
-        match Connection::new()
+        let session_info = Connection::new()
             .expect("Unable to open telemetry")
-            .session_info()
-        {
-            Ok(session) => println!("Track: {}", session.weekend.track_name),
-            Err(e) => println!("Error: {:?}", e),
-        };
+            .session_info();
+        assert!(session_info.is_ok());
     }
 
     #[test]
     fn test_latest_telemetry() {
-        Connection::new()
+        let session_tick: u32 = Connection::new()
             .expect("Unable to open telemetry")
             .telemetry()
-            .expect("Couldn't get latest telem");
+            .expect("Couldn't get latest telem")
+            .get("SessionTick")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        assert!(session_tick > 0);
     }
 }
