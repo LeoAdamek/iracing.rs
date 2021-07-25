@@ -1,11 +1,9 @@
-#![cfg(target_os = "windows")]
-
 use std::convert::TryInto;
 use std::default::Default;
 use std::error::Error;
 use std::ffi::CStr;
-use std::fmt::Display;
 use std::fmt;
+use std::fmt::Display;
 use std::os::windows::raw::HANDLE;
 use std::ptr::null;
 use std::slice::from_raw_parts;
@@ -16,21 +14,20 @@ use libc::c_void;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::handleapi::CloseHandle;
 use winapi::um::minwinbase::LPSECURITY_ATTRIBUTES;
-use winapi::um::synchapi::{CreateEventW,WaitForSingleObject,ResetEvent};
+use winapi::um::synchapi::{CreateEventW, ResetEvent, WaitForSingleObject};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::session::*;
 
+use encoding::all::ISO_8859_1;
+use encoding::{DecoderTrap, Encoding};
 use serde_yaml::from_str as yaml_from;
 use std::io::Result as IOResult;
 use std::mem::transmute;
 use std::sync::Mutex;
-use encoding::{Encoding, DecoderTrap};
-use encoding::all::ISO_8859_1;
 use winapi::shared::minwindef::LPVOID;
-use winapi::um::memoryapi::{OpenFileMappingW, FILE_MAP_READ, MapViewOfFile};
-
+use winapi::um::memoryapi::{MapViewOfFile, OpenFileMappingW, FILE_MAP_READ};
 
 /// System path where the shared memory map is located.
 pub const TELEMETRY_PATH: &'static str = "Local\\IRSDKMemMapFileName";
@@ -64,14 +61,14 @@ pub struct Header {
 }
 
 /// Blocking telemetry interface
-/// 
+///
 /// Calling `sample()` on a Blocking interface will block until a new telemetry sample is made available.
-/// 
+///
 pub struct Blocking {
     origin: *const c_void,
     values: Vec<ValueHeader>,
     header: Header,
-    event_handle: HANDLE
+    event_handle: HANDLE,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -101,10 +98,10 @@ pub struct ValueDescription {
     pub value: Value,
     pub count: usize,
     pub count_as_time: bool,
-    
+
     pub name: String,
     pub description: String,
-    pub unit: String
+    pub unit: String,
 }
 
 ///
@@ -114,37 +111,37 @@ pub struct ValueDescription {
 pub struct Sample {
     tick: i32,
     buffer: Vec<u8>,
-    values: Vec<ValueHeader>
+    values: Vec<ValueHeader>,
 }
 
 /// Telemetry Value
-/// 
-/// Represents a single value in the telemetry. 
+///
+/// Represents a single value in the telemetry.
 /// Telemetry data is always quantitive but may be of varying numeric types, plus boolean.
-/// 
+///
 /// The iRacing Telemetry documentation describes the data-type expected for a given telemetry measurement.
 /// `Into` can be used when the expected data type is known, else `match` can be used to dynamically handle the
 /// returned data type.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ## Known, Expected Data Type
 /// ```
 /// use iracing::telemetry::Sample;
-/// 
+///
 /// let s: Sample = some_sample_getter();
-/// 
+///
 /// let gear: i32 = s.get("Gear").unwrap().into();
 /// ```
-/// 
+///
 /// ## Unknown data type
-/// 
+///
 /// ```
 /// use iracing::telemtry::{Sample, Value};
-/// 
+///
 /// let v: &'static str = some_input_for_var_name();
 /// let s: Sample = some_sample_getter();
-/// 
+///
 /// match s.get(v) {
 ///     None => println!("Didn't find that value");
 ///     Some(value) => match {
@@ -155,9 +152,9 @@ pub struct Sample {
 ///         Value::FLOAT(f) | Value::DOUBLE(f) => println!("Value: {:.2}", f),
 ///         _  => println!("Unknown Value")
 ///     }
-/// };  
+/// };
 /// ```
-#[derive(Debug,Clone,Serialize,Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Value {
     CHAR(u8),
     BOOL(bool),
@@ -168,7 +165,7 @@ pub enum Value {
     UNKNOWN(()),
     IntVec(Vec<i32>),
     FloatVec(Vec<f32>),
-    BoolVec(Vec<bool>)
+    BoolVec(Vec<bool>),
 }
 
 impl From<i32> for Value {
@@ -180,7 +177,7 @@ impl From<i32> for Value {
             3 => Value::BITS(0x00),
             4 => Value::FLOAT(0.0),
             5 => Value::DOUBLE(0.0),
-            _ => Value::UNKNOWN(())
+            _ => Value::UNKNOWN(()),
         }
     }
 }
@@ -189,9 +186,11 @@ impl Value {
     pub fn size(&self) -> usize {
         match self {
             Self::CHAR(_) | Self::BOOL(_) | Self::BoolVec(_) => 1,
-            Self::INT(_) | Self::BITS(_) | Self::FLOAT(_) | Self::IntVec(_) | Self::FloatVec(_) => 4,
+            Self::INT(_) | Self::BITS(_) | Self::FLOAT(_) | Self::IntVec(_) | Self::FloatVec(_) => {
+                4
+            }
             Self::DOUBLE(_) => 8,
-            Self::UNKNOWN(_) => 1
+            Self::UNKNOWN(_) => 1,
         }
     }
 }
@@ -202,19 +201,19 @@ impl TryInto<i32> for Value {
     fn try_into(self) -> Result<i32, Self::Error> {
         match self {
             Self::INT(n) => Ok(n),
-            _ => Err("Value is not a signed 4-byte integer")
+            _ => Err("Value is not a signed 4-byte integer"),
         }
     }
 }
 
 impl TryInto<u32> for Value {
     type Error = &'static str;
-    
+
     fn try_into(self) -> Result<u32, Self::Error> {
         match self {
             Self::INT(n) => Ok(n as u32),
             Self::BITS(n) => Ok(n),
-            _ => Err("Value is not a 4-byte integer")
+            _ => Err("Value is not a 4-byte integer"),
         }
     }
 }
@@ -225,7 +224,7 @@ impl TryInto<f32> for Value {
     fn try_into(self) -> Result<f32, Self::Error> {
         match self {
             Self::FLOAT(n) => Ok(n),
-            _ => Err("Value is not a float")
+            _ => Err("Value is not a float"),
         }
     }
 }
@@ -237,7 +236,7 @@ impl TryInto<f64> for Value {
         match self {
             Self::DOUBLE(n) => Ok(n),
             Self::FLOAT(f) => Ok(f as f64),
-            _ => Err("Value is not a float or double")
+            _ => Err("Value is not a float or double"),
         }
     }
 }
@@ -246,7 +245,7 @@ impl Into<bool> for Value {
     fn into(self) -> bool {
         match self {
             Self::BOOL(b) => b,
-            _ => false
+            _ => false,
         }
     }
 }
@@ -255,7 +254,7 @@ impl Into<Vec<bool>> for Value {
     fn into(self) -> Vec<bool> {
         match self {
             Self::BoolVec(b) => b,
-            _ => vec![false]
+            _ => vec![false],
         }
     }
 }
@@ -285,9 +284,7 @@ impl ValueHeader {
         let unit = unsafe { CStr::from_ptr(self._unit.as_ptr()) };
         unit.to_string_lossy().to_string()
     }
-
 }
-
 
 // Workaround to handle cloning var descriptions which are [u8; 64] thus cannot be derived
 struct VarDescription([c_char; ValueHeader::MAX_VAR_DESCRIPTION_LENGTH]);
@@ -296,7 +293,7 @@ impl Clone for VarDescription {
     fn clone(&self) -> Self {
         let mut new = VarDescription([0; ValueHeader::MAX_VAR_DESCRIPTION_LENGTH]);
 
-        for i in 1 .. ValueHeader::MAX_VAR_DESCRIPTION_LENGTH {
+        for i in 1..ValueHeader::MAX_VAR_DESCRIPTION_LENGTH {
             new.0[i] = self.0[i];
         }
 
@@ -340,7 +337,6 @@ impl Header {
         let mut buffer = self.buffers[0];
 
         for b in self.buffers.iter() {
-
             if b.ticks > latest_tick {
                 buffer = *b;
                 latest_tick = b.ticks;
@@ -366,15 +362,16 @@ impl Header {
         content.clone()
     }
 
-    pub fn telemetry(
-        &self,
-        from_loc: *const c_void,
-    ) -> Result<Sample, Box<dyn std::error::Error>> {
+    pub fn telemetry(&self, from_loc: *const c_void) -> Result<Sample, Box<dyn std::error::Error>> {
         let (tick, vbh) = self.latest_buffer();
         let value_buffer = self.var_buffer(vbh, from_loc);
         let value_header = self.get_var_header(from_loc);
 
-        Ok(Sample::new(tick, value_header.to_vec(), value_buffer.to_vec()))
+        Ok(Sample::new(
+            tick,
+            value_header.to_vec(),
+            value_buffer.to_vec(),
+        ))
     }
 }
 
@@ -401,7 +398,7 @@ impl Sample {
     pub fn has(&self, name: &'static str) -> bool {
         match self.header_for(name) {
             Some(_) => true,
-            None => false
+            None => false,
         }
     }
 
@@ -414,17 +411,16 @@ impl Sample {
     ///       It should be used primarily for debugging, and for most use cases
     ///       Selecting only the values required with `get()` is suggested.
     pub fn all(&self) -> Vec<ValueDescription> {
-
-        let r = self.values.iter().map( |v| {
+        let r = self.values.iter().map(|v| {
             let val = self.value(v);
 
-            ValueDescription{
+            ValueDescription {
                 name: v.name().to_owned(),
                 description: v.description().to_owned(),
                 unit: v.unit().to_owned(),
                 count: v.count as usize,
                 count_as_time: v.count_as_time,
-                value: val
+                value: val,
             }
         });
 
@@ -433,20 +429,20 @@ impl Sample {
 
     ///
     /// Get a Value from the sample.
-    /// 
+    ///
     /// Read a single varialbe from the telemetry sample.
-    /// 
+    ///
     /// Returns `Ok(Value)` if the telemetry value is available.
     /// Returns `Err(String)` if the value cannot be found.
-    /// 
+    ///
     /// # Parameters
-    /// 
+    ///
     /// `name`  Name of the telemetry variable to get
     ///   - see the iRacing Telemtry documentation for a complete list of possible values
     pub fn get(&self, name: &'static str) -> Result<Value, String> {
         match self.header_for(name) {
             None => Err(format!("No value '{}' found", name)),
-            Some(vh) => Ok(self.value(&vh))
+            Some(vh) => Ok(self.value(&vh)),
         }
     }
 
@@ -456,38 +452,46 @@ impl Sample {
         let vz = vt.size();
         let ve = vs + vz;
         let vc = vh.count as usize;
-        
+
         let raw_val = &self.buffer[vs..ve];
 
         let v: Value;
         v = match vt {
             Value::INT(_) => {
                 if vc == 1 {
-                    Value::INT( i32::from_le_bytes( raw_val.try_into().unwrap() ))
+                    Value::INT(i32::from_le_bytes(raw_val.try_into().unwrap()))
                 } else {
                     let mut values: Vec<i32> = Vec::with_capacity(vc);
-                    for i in 0..vc-1 {
-                        values.push(i32::from_le_bytes( self.buffer[vs+vz*i .. vs+vz*(i+1) ].try_into().unwrap() ));
+                    for i in 0..vc - 1 {
+                        values.push(i32::from_le_bytes(
+                            self.buffer[vs + vz * i..vs + vz * (i + 1)]
+                                .try_into()
+                                .unwrap(),
+                        ));
                     }
-                    
+
                     Value::IntVec(values)
                 }
-            },
+            }
             Value::FLOAT(_) => {
                 if vc == 1 {
-                    Value::FLOAT( f32::from_le_bytes( raw_val.try_into().unwrap() ))
+                    Value::FLOAT(f32::from_le_bytes(raw_val.try_into().unwrap()))
                 } else {
                     let mut values: Vec<f32> = Vec::with_capacity(vc);
-                    
-                    for i in 0 .. vc-1 {
-                        values.push(f32::from_le_bytes( self.buffer[vs+vz*i .. vs+vz*(i+1) ].try_into().unwrap() ));
+
+                    for i in 0..vc - 1 {
+                        values.push(f32::from_le_bytes(
+                            self.buffer[vs + vz * i..vs + vz * (i + 1)]
+                                .try_into()
+                                .unwrap(),
+                        ));
                     }
-                    
+
                     Value::FloatVec(values)
                 }
-            }, 
-            Value::DOUBLE(_) => Value::DOUBLE( f64::from_le_bytes( raw_val.try_into().unwrap() )),
-            Value::BITS(_) => Value::BITS( u32::from_le_bytes( raw_val.try_into().unwrap() )),
+            }
+            Value::DOUBLE(_) => Value::DOUBLE(f64::from_le_bytes(raw_val.try_into().unwrap())),
+            Value::BITS(_) => Value::BITS(u32::from_le_bytes(raw_val.try_into().unwrap())),
             Value::CHAR(_) => Value::CHAR(raw_val[0] as u8),
             Value::BOOL(_) => {
                 if vc == 1 {
@@ -495,14 +499,14 @@ impl Sample {
                 } else {
                     let mut values: Vec<bool> = Vec::with_capacity(vc);
 
-                    for i in 0..vc-1 {
+                    for i in 0..vc - 1 {
                         values.push(self.buffer[vs + i] > 0);
                     }
 
                     Value::BoolVec(values)
                 }
             }
-            _ => unimplemented!()
+            _ => unimplemented!(),
         };
 
         v
@@ -511,13 +515,13 @@ impl Sample {
 
 ///
 /// Telemetry Error
-/// 
+///
 /// An error which occurs when telemetry samples cannot be read from the memory buffer.
 #[derive(Debug)]
 pub enum TelemetryError {
     ABANDONED,
     TIMEOUT(usize),
-    UNKNOWN(u32)
+    UNKNOWN(u32),
 }
 
 impl Display for TelemetryError {
@@ -525,18 +529,17 @@ impl Display for TelemetryError {
         match self {
             Self::ABANDONED => write!(f, "{}", "Abandoned"),
             Self::TIMEOUT(ms) => write!(f, "Timeout after {}ms", ms),
-            Self::UNKNOWN(v) => write!(f, "Unknown error code = {:x?}", v)
+            Self::UNKNOWN(v) => write!(f, "Unknown error code = {:x?}", v),
         }
     }
 }
 
-impl Error for TelemetryError {
-}
+impl Error for TelemetryError {}
 
 impl Blocking {
     pub fn new(location: *const c_void, head: Header) -> std::io::Result<Self> {
         let values = head.get_var_header(location).to_vec();
-    
+
         let mut event_name: Vec<u16> = DATA_EVENT_NAME.encode_utf16().collect();
         event_name.push(0);
 
@@ -550,13 +553,12 @@ impl Blocking {
             return Err(std::io::Error::from_raw_os_error(errno));
         }
 
-
-        Ok(Blocking{
-           origin: location,
-           header: head,
-           values: values,
-           event_handle: handle
-        }) 
+        Ok(Blocking {
+            origin: location,
+            header: head,
+            values: values,
+            event_handle: handle,
+        })
     }
 
     pub fn close(&self) -> std::io::Result<()> {
@@ -589,63 +591,64 @@ impl Blocking {
 
     ///
     /// Sample Telemetry Data
-    /// 
+    ///
     /// Waits for new telemetry data up to `timeout` and returns a safe copy of the telemetry data.
     /// Returns an error on timeout or underlying system error.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use iracing::Connection;
     /// use std::time::Duration;
-    /// 
+    ///
     /// let sampler = Connection::new()?.blocking()?;
     /// let sample = sampler.get(Duration::from_millis(50))?;
     /// ```
     pub fn sample(&self, timeout: Duration) -> Result<Sample, Box<dyn Error>> {
-        
         let wait_time: u32 = match timeout.as_millis().try_into() {
             Ok(v) => v,
-            Err(e) => return Err(Box::new(e))
+            Err(e) => return Err(Box::new(e)),
         };
 
-        let signal = unsafe { WaitForSingleObject(self.event_handle, wait_time)  };
+        let signal = unsafe { WaitForSingleObject(self.event_handle, wait_time) };
 
         match signal {
             0x80 => Err(Box::new(TelemetryError::ABANDONED)), // Abandoned
             0x102 => Err(Box::new(TelemetryError::TIMEOUT(wait_time as usize))), // Timeout
-            0xFFFFFFFF => { // Error
+            0xFFFFFFFF => {
+                // Error
                 let errno = unsafe { GetLastError() as i32 };
                 Err(Box::new(std::io::Error::from_raw_os_error(errno)))
-            }, 
-            0x00 => { // OK
+            }
+            0x00 => {
+                // OK
                 unsafe { ResetEvent(self.event_handle) };
                 self.header.telemetry(self.origin)
             }
-            _ => Err(Box::new(TelemetryError::UNKNOWN(signal as u32)))
+            _ => Err(Box::new(TelemetryError::UNKNOWN(signal as u32))),
         }
     }
 }
 
-#[cfg(target_os="windows")]
+#[cfg(target_os = "windows")]
 ///
 /// iRacing live telemetry and session data connection.
-/// 
+///
 /// Allows retrival of live data fro iRacing.
 /// The data is provided using a shared memory map, allowing the simulator
 /// to deposit data roughly every 16ms to be read.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use iracing::Connection;
-/// 
+///
 /// let _ = Connection::new().expect("Unable to find telemetry data");
 /// ```
 pub struct Connection {
     mux: Mutex<()>,
     location: *mut c_void,
-    header: Header
+    header: Header,
 }
 
 #[cfg(target_os = "windows")]
@@ -657,46 +660,55 @@ impl Connection {
         let mapping: HANDLE;
         let errno: i32;
 
-        unsafe { mapping = OpenFileMappingW(FILE_MAP_READ, 0, path.as_ptr()); };
+        unsafe {
+            mapping = OpenFileMappingW(FILE_MAP_READ, 0, path.as_ptr());
+        };
 
         if null() == mapping {
-            
-            unsafe { errno = GetLastError() as i32; }
+            unsafe {
+                errno = GetLastError() as i32;
+            }
 
             return Err(std::io::Error::from_raw_os_error(errno));
         }
 
         let view: LPVOID;
- 
+
         unsafe {
             view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
         }
 
         if null() == view {
-            unsafe { errno = GetLastError() as i32; }
+            unsafe {
+                errno = GetLastError() as i32;
+            }
 
-            return Err(std::io::Error::from_raw_os_error(errno))
+            return Err(std::io::Error::from_raw_os_error(errno));
         }
 
         let header = unsafe { Self::read_header(view) };
 
-        return Ok(Connection {mux: Mutex::default(), location: view, header: header});
+        return Ok(Connection {
+            mux: Mutex::default(),
+            location: view,
+            header: header,
+        });
     }
 
     ///
     /// Get the data header
-    /// 
+    ///
     /// Reads the data header from the shared memory map and returns a copy of the header
     /// which can be used safely elsewhere.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use iracing::Connection;
-    /// 
+    ///
     /// let location_of_an_iracing_header: *const c_void;
     /// let header = Connection::read_header(location_of_an_iracing_header);
-    /// 
+    ///
     /// println!("Data Version: {}", header.version);
     /// ```
     pub unsafe fn read_header(from: *const c_void) -> Header {
@@ -708,15 +720,15 @@ impl Connection {
 
     ///
     /// Get session information
-    /// 
+    ///
     /// Get general session information - This data is mostly static and contains
     /// overall information related to the current or replayed session
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use iracing::Connection;
-    /// 
+    ///
     /// match Connection::new().expect("Unable to open session").session_info() {
     ///     Ok(session) => println!("Track Name: {}", session.weekend.track_display_name),
     ///     Err(e) => println!("Invalid Session")
@@ -727,33 +739,33 @@ impl Connection {
 
         let start = (self.location as usize + header.session_info_offset as usize) as *const u8;
         let size = header.session_info_length as usize;
-        
+
         let data: &[u8] = unsafe { from_raw_parts(start, size) };
 
         // Decode the data as ISO-8859-1 (Rust wants UTF-8)
         let content: String = match ISO_8859_1.decode(data, DecoderTrap::Strict) {
             Ok(value) => value,
-            Err(e) => return Err(Box::from(e))
+            Err(e) => return Err(Box::from(e)),
         };
 
         match yaml_from(content.as_str()) {
             Ok(session) => Ok(session),
-            Err(e) => Err(Box::from(e))
+            Err(e) => Err(Box::from(e)),
         }
     }
 
     ///
     /// Get latest telemetry.
-    /// 
+    ///
     /// Get the latest live telemetry data, the telemetry is updated roughtly every 16ms
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use iracing::Connection;
-    /// 
+    ///
     /// let sample = Connection::new()?.telemetry()?;
-    /// ``` 
+    /// ```
     pub fn telemetry(&self) -> Result<Sample, Box<dyn std::error::Error>> {
         let header = unsafe { Self::read_header(self.location) };
         header.telemetry(self.location as *const std::ffi::c_void)
@@ -761,16 +773,16 @@ impl Connection {
 
     ///
     /// Get Blocking Telemetry Interface.
-    /// 
+    ///
     /// Creates a new `iracing::telemetry::Blocking` connector which allows telemetry samples to
     /// be collected, and will wait and block until a new sample is available, or a timeout is reached.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use iracing::Connection;
     /// use std::time::Duration;
-    /// 
+    ///
     /// let sampler = Connection::new()?.blocking()?;
     /// let sample = sample.sample(Duration::from_millis(50))?;
     /// ```
@@ -797,14 +809,20 @@ mod tests {
 
     #[test]
     fn test_session_info() {
-        match Connection::new().expect("Unable to open telemetry").session_info() {
+        match Connection::new()
+            .expect("Unable to open telemetry")
+            .session_info()
+        {
             Ok(session) => println!("Track: {}", session.weekend.track_name),
-            Err(e) => println!("Error: {:?}", e)
+            Err(e) => println!("Error: {:?}", e),
         };
     }
 
     #[test]
     fn test_latest_telemetry() {
-        Connection::new().expect("Unable to open telemetry").telemetry().expect("Couldn't get latest telem");
+        Connection::new()
+            .expect("Unable to open telemetry")
+            .telemetry()
+            .expect("Couldn't get latest telem");
     }
 }

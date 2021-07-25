@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 
 #[derive(Debug, Copy, Clone)]
 pub enum SessionState {
@@ -7,7 +8,7 @@ pub enum SessionState {
     ParadeLaps,
     Racing,
     Checkered,
-    Cooldown
+    Cooldown,
 }
 
 impl From<i32> for SessionState {
@@ -19,7 +20,7 @@ impl From<i32> for SessionState {
             4 => Self::Racing,
             5 => Self::Checkered,
             6 => Self::Cooldown,
-            _ => Self::Invalid(idx)
+            _ => Self::Invalid(idx),
         }
     }
 }
@@ -35,7 +36,7 @@ bitflags! {
 
         /// Fuel pressure too low (low fuel)
         const FUEL_PRESSURE = 0x02;
-        
+
         /// Oil pressure too low (low oil)
         const OIL_PRESSURE = 0x04;
 
@@ -110,7 +111,7 @@ bitflags! {
         const RANDOM_WAVING = 1 << 13;
         const CAUTION = 1 << 14;
         const CAUTION_WAVING = 1 << 15;
-        
+
         const BLACK_FLAG = 1 << 16;
         const DISQUALIFIED_FLAG = 1 << 17;
         const CAN_SERVICE = 1 << 18;
@@ -160,7 +161,7 @@ impl From<i32> for Units {
         if v > 0 {
             Self::Metric
         } else {
-            Self::Imperial 
+            Self::Imperial
         }
     }
 }

@@ -1,12 +1,11 @@
 extern crate chrono;
 
-use std::io::Read;
+use chrono::NaiveDateTime;
 use std::io;
+use std::io::Read;
 use std::io::Result as IOResult;
 use std::io::{Error as IOError, ErrorKind};
 use std::u32;
-use chrono::NaiveDateTime;
-
 
 /// Magic number found at the start of replay files
 pub const FILE_MAGIC: &[u8] = b"YLPR";
@@ -15,11 +14,11 @@ pub const FILE_MAGIC: &[u8] = b"YLPR";
 const ENTRY_LENGTH: usize = 12;
 
 /// A Replay is a pre-recorded stream of data from iRacing which includes metadata
-/// as well as 
+/// as well as
 #[derive(Debug)]
 pub struct Replay<R: Read> {
     pub reader: R,
-    pub metadata: Header
+    pub metadata: Header,
 }
 
 /// Header is the top-level header data from a replay.
@@ -33,24 +32,24 @@ pub struct Header {
     pub session_id: u32,
     pub user_id: u32,
     pub user_car_id: u32,
-    pub entries: Vec<Entry>
+    pub entries: Vec<Entry>,
 }
 
-#[derive(Debug,Default)]
+#[derive(Debug, Default)]
 pub struct Entry {
     pub id: i32,
     pub car_id: u32,
     pub class_id: u32,
-    pub car_name: String
+    pub car_name: String,
 }
 
 pub struct Driver {
-    pub name: String
+    pub name: String,
 }
 
 impl Default for Header {
     fn default() -> Self {
-        Header{
+        Header {
             user_name: String::default(),
             timestamp: NaiveDateTime::from_timestamp(0, 0),
             track: String::default(),
@@ -58,7 +57,7 @@ impl Default for Header {
             session_id: 0u32,
             user_id: 0u32,
             user_car_id: 0u32,
-            entries: Vec::default()
+            entries: Vec::default(),
         }
     }
 }
@@ -98,7 +97,7 @@ impl Header {
         // Attempt to parse the timestamp (first 20 chars)
         match NaiveDateTime::parse_from_str(timestamp_str.as_str(), "%Y-%m-%d %H:%M:%S") {
             Ok(val) => result.timestamp = val,
-            Err(e) => { 
+            Err(e) => {
                 println!("Error: {:?} / {}", e, e.to_string());
                 return Err(IOError::new(ErrorKind::InvalidInput, e));
             }
@@ -120,7 +119,12 @@ impl Header {
 
         // Right now we chomp some spaces until we return to word-alignment
         // TODO: Chomp the spaces until we return to word alignment.
-        let _padding: Vec<u8> = r.by_ref().bytes().take_while(|b| b.as_ref().unwrap() == &b' ').map(|b| b.unwrap() ).collect();
+        let _padding: Vec<u8> = r
+            .by_ref()
+            .bytes()
+            .take_while(|b| b.as_ref().unwrap() == &b' ')
+            .map(|b| b.unwrap())
+            .collect();
 
         skip(&mut r, 27)?;
 
@@ -132,11 +136,11 @@ impl Header {
 
         // Read the track and layout name
         let track_layout = read_str(&mut r, 64)?;
-        
+
         match track_layout.chars().position(|c| c == '\\') {
             None => {
                 result.track = track_layout;
-            },
+            }
 
             Some(position) => {
                 let (track, layout) = track_layout.split_at(position);
@@ -146,7 +150,6 @@ impl Header {
             }
         }
 
-
         Ok(result)
     }
 }
@@ -155,7 +158,7 @@ impl Header {
 #[inline]
 fn skip<R: Read>(mut reader: R, length: usize) -> IOResult<()> {
     io::copy(&mut reader.by_ref().take(length as u64), &mut io::sink())?;
-    Ok(()) 
+    Ok(())
 }
 
 // Helper to read `length` bytes from a reader and return it as a `String`
@@ -164,58 +167,70 @@ fn read_str<R: Read>(mut reader: R, length: usize) -> IOResult<String> {
     reader.read_exact(&mut raw_string_bytes)?;
 
     // Find the first null byte
-    let nul = raw_string_bytes.iter().position(|&b| b == 0).expect("Given string does not terminate within given length");
+    let nul = raw_string_bytes
+        .iter()
+        .position(|&b| b == 0)
+        .expect("Given string does not terminate within given length");
 
-    Ok(String::from_utf8( (&raw_string_bytes[..nul]).to_vec() ).unwrap())
+    Ok(String::from_utf8((&raw_string_bytes[..nul]).to_vec()).unwrap())
 }
 
 impl<R: Read> Replay<R> {
     /// Create a new replay from a Read
     pub fn new(mut r: R) -> IOResult<Self> {
-
         validate_reader(&mut r)?;
 
         let metadata = Header::from(&mut r)?;
-                
-        Ok(Replay{reader: r, metadata: metadata})
+
+        Ok(Replay {
+            reader: r,
+            metadata: metadata,
+        })
     }
 }
 
 /// Validate the given reader contains contains replay data.
-/// 
+///
 /// This function consumes the first 4 bytes of data from the reader.
 pub fn validate_reader<R: Read>(mut src: R) -> IOResult<()> {
     let mut magic = [0u8; 4];
-    
+
     src.read_exact(&mut magic[..])?;
 
-    let valid = magic.iter().zip( FILE_MAGIC.iter() ).all(|(a,b)| a == b);
+    let valid = magic.iter().zip(FILE_MAGIC.iter()).all(|(a, b)| a == b);
 
     if valid {
         Ok(())
     } else {
-        Err(IOError::new(ErrorKind::InvalidData, "Invalid data at start of stream"))
+        Err(IOError::new(
+            ErrorKind::InvalidData,
+            "Invalid data at start of stream",
+        ))
     }
 }
-
 
 #[cfg(test)]
 mod tests {
 
     use crate::replay::Header;
-    use std::io::BufReader;
     use std::fs::File;
+    use std::io::BufReader;
     use std::io::ErrorKind;
 
     #[test]
     fn validate_reader() {
         // Valid readers
-        let valid_values = [String::from("YLPR THIS IS VALID"), String::from("YLPR\" THIS IS ALSO VALID")];
-        let invalid_valutes = [String::from("THIS IS NOT VALID"), String::from("YLLR\" THIS ISNT VALID EITHER")];
-
+        let valid_values = [
+            String::from("YLPR THIS IS VALID"),
+            String::from("YLPR\" THIS IS ALSO VALID"),
+        ];
+        let invalid_valutes = [
+            String::from("THIS IS NOT VALID"),
+            String::from("YLLR\" THIS ISNT VALID EITHER"),
+        ];
 
         for v in valid_values.iter() {
-            let r = BufReader::new(v.as_bytes() );
+            let r = BufReader::new(v.as_bytes());
 
             assert_eq!(crate::replay::validate_reader(r).unwrap(), ());
         }
@@ -244,6 +259,5 @@ mod tests {
         assert_eq!(metadata.track, String::from("iowa"));
         assert_eq!(metadata.layout, Some(String::from("oval")));
         assert_eq!(metadata.user_name, String::from("L W Adamek"));
-
     }
 }
