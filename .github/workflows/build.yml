@@ -13,6 +13,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Lint
+      run: cargo clippy --tests --examples --all-features
     - name: Build
       run: cargo build --release --examples --verbose --all-features
     - name: Check Tests Compile (don't run because we'd need iRacing running for that)
