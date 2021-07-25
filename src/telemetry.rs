@@ -286,21 +286,6 @@ impl ValueHeader {
     }
 }
 
-// Workaround to handle cloning var descriptions which are [u8; 64] thus cannot be derived
-struct VarDescription([c_char; ValueHeader::MAX_VAR_DESCRIPTION_LENGTH]);
-
-impl Clone for VarDescription {
-    fn clone(&self) -> Self {
-        let mut new = VarDescription([0; ValueHeader::MAX_VAR_DESCRIPTION_LENGTH]);
-
-        for i in 1..ValueHeader::MAX_VAR_DESCRIPTION_LENGTH {
-            new.0[i] = self.0[i];
-        }
-
-        new
-    }
-}
-
 impl Default for ValueHeader {
     ///
     /// Create a new, empty ValueHeader
