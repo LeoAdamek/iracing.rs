@@ -119,32 +119,40 @@ pub struct Sample {
 ///
 /// ## Known, Expected Data Type
 /// ```
-/// use iracing::telemetry::Sample;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # use iracing::telemetry::{Connection, Value};
+/// # use std::time::Duration;
+/// # let sampler = Connection::new()?.blocking()?;
+/// # let sample = sampler.sample(Duration::from_millis(50))?;
+/// use std::convert::TryInto;
 ///
-/// let s: Sample = some_sample_getter();
-///
-/// let gear: i32 = s.get("Gear").unwrap().into();
+/// let gear: i32 = sample.get("Gear").unwrap().try_into().unwrap();
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// ## Unknown data type
 ///
 /// ```
-/// use iracing::telemtry::{Sample, Value};
-///
-/// let v: &'static str = some_input_for_var_name();
-/// let s: Sample = some_sample_getter();
-///
-/// match s.get(v) {
-///     None => println!("Didn't find that value");
-///     Some(value) => match {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # use iracing::telemetry::{Connection, Value};
+/// # use std::time::Duration;
+/// # let sampler = Connection::new()?.blocking()?;
+/// # let sample = sampler.sample(Duration::from_millis(50))?;
+/// match sample.get("some_key") {
+///     Err(err) => println!("Didn't find that value: {}", err),
+///     Ok(value) => match value {
 ///         Value::CHAR(c) => println!("Value: {:x}", c),
-///         Value::BOOL(b) => println!("Yes") if b,
+///         Value::BOOL(b) => println!("Value: {}", if b { "True" } else { "False" }),
 ///         Value::INT(i) => println!("Value: {}", i),
 ///         Value::BITS(u) => println!("Value: 0x{:32b}", u),
-///         Value::FLOAT(f) | Value::DOUBLE(f) => println!("Value: {:.2}", f),
-///         _  => println!("Unknown Value")
+///         Value::FLOAT(f) => println!("Value: {:.2}", f),
+///         Value::DOUBLE(f) => println!("Value: {:.2}", f),
+///         _  => println!("Unknown Value"),
 ///     }
 /// };
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Value {
@@ -584,11 +592,14 @@ impl Blocking {
     /// # Examples
     ///
     /// ```
-    /// use iracing::Connection;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use iracing::telemetry::Connection;
     /// use std::time::Duration;
     ///
     /// let sampler = Connection::new()?.blocking()?;
-    /// let sample = sampler.get(Duration::from_millis(50))?;
+    /// let sample = sampler.sample(Duration::from_millis(50))?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn sample(&self, timeout: Duration) -> Result<Sample, Box<dyn Error>> {
         let wait_time: u32 = match timeout.as_millis().try_into() {
@@ -626,7 +637,7 @@ impl Blocking {
 /// # Examples
 ///
 /// ```
-/// use iracing::Connection;
+/// use iracing::telemetry::Connection;
 ///
 /// let _ = Connection::new().expect("Unable to find telemetry data");
 /// ```
@@ -676,17 +687,6 @@ impl Connection {
     ///
     /// Reads the data header from the shared memory map and returns a copy of the header
     /// which can be used safely elsewhere.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use iracing::Connection;
-    ///
-    /// let location_of_an_iracing_header: *const c_void;
-    /// let header = Connection::read_header(location_of_an_iracing_header);
-    ///
-    /// println!("Data Version: {}", header.version);
-    /// ```
     unsafe fn read_header(from: *const c_void) -> Header {
         let raw_header: *const Header = transmute(from);
         *raw_header
@@ -701,7 +701,7 @@ impl Connection {
     /// # Examples
     ///
     /// ```
-    /// use iracing::Connection;
+    /// use iracing::telemetry::Connection;
     ///
     /// match Connection::new().expect("Unable to open session").session_info() {
     ///     Ok(session) => println!("Track Name: {}", session.weekend.track_display_name),
@@ -736,9 +736,12 @@ impl Connection {
     /// # Examples
     ///
     /// ```
-    /// use iracing::Connection;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use iracing::telemetry::Connection;
     ///
     /// let sample = Connection::new()?.telemetry()?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn telemetry(&self) -> Result<Sample, Box<dyn std::error::Error>> {
         let header = unsafe { Self::read_header(self.location) };
@@ -754,11 +757,14 @@ impl Connection {
     /// # Examples
     ///
     /// ```
-    /// use iracing::Connection;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use iracing::telemetry::Connection;
     /// use std::time::Duration;
     ///
     /// let sampler = Connection::new()?.blocking()?;
-    /// let sample = sample.sample(Duration::from_millis(50))?;
+    /// let sample = sampler.sample(Duration::from_millis(50))?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn blocking(&self) -> IOResult<Blocking> {
         Blocking::new(self.location, unsafe { Self::read_header(self.location) })
