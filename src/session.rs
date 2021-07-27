@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 ///
 /// Session Details
-/// 
+///
 /// Top-level details regarding the current session, including race weekend, session and drivers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionDetails {
@@ -161,7 +161,7 @@ pub struct Session {
     pub track_rubber_state: String,
 
     #[serde(rename = "ResultsPositions")]
-    pub results: Vec<SessionResult>
+    pub results: Vec<SessionResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,7 +180,7 @@ pub struct SessionResult {
     pub laps_driven: f32,
     pub incidents: i32,
     pub reason_out_id: i32,
-    pub reason_out_str: String
+    pub reason_out_str: String,
 }
 
 ///
@@ -320,7 +320,7 @@ pub struct Driver {
     pub car_sponsor2: i64,
 
     pub club_name: Option<String>, // User's club name - Not present for safety car.
-    pub division_name: Option<String> // User's disivision name - Not present for safety car.
+    pub division_name: Option<String>, // User's disivision name - Not present for safety car.
 }
 
 impl Session {

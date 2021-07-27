@@ -1,4 +1,3 @@
-
 ///
 /// Track Surface Type
 
@@ -17,7 +16,7 @@ pub enum TrackSurface {
     Gravel(usize),
     Grasscrete,
     Astroturf,
-    Unknown(usize)
+    Unknown(usize),
 }
 
 impl From<i32> for TrackSurface {
@@ -25,7 +24,7 @@ impl From<i32> for TrackSurface {
         let ix = idx as usize;
         match idx {
             -1 => TrackSurface::NotInWorld,
-             0 => TrackSurface::Undefined,
+            0 => TrackSurface::Undefined,
             1 | 2 | 3 | 4 => TrackSurface::Asphalt(ix),
             6 | 7 => TrackSurface::Concrete(ix - 4),
             8 | 9 => TrackSurface::RacingDirt(ix - 7),
@@ -37,7 +36,7 @@ impl From<i32> for TrackSurface {
             25 | 26 | 27 | 28 => TrackSurface::Gravel(ix - 24),
             29 => TrackSurface::Grasscrete,
             30 => TrackSurface::Astroturf,
-            _ => TrackSurface::Unknown(ix)
+            _ => TrackSurface::Unknown(ix),
         }
     }
 }
