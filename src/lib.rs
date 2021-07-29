@@ -1,3 +1,5 @@
+#![deny(clippy::all)]
+
 pub mod replay;
 pub mod session;
 pub mod states;

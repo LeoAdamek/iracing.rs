@@ -182,7 +182,7 @@ impl<R: Read> Replay<R> {
 
         Ok(Replay {
             reader: r,
-            metadata: metadata,
+            metadata,
         })
     }
 }
@@ -230,7 +230,7 @@ mod tests {
         for v in valid_values.iter() {
             let r = BufReader::new(v.as_bytes());
 
-            assert_eq!(crate::replay::validate_reader(r).unwrap(), ());
+            assert!(crate::replay::validate_reader(r).is_ok());
         }
 
         for v in invalid_valutes.iter() {

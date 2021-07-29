@@ -58,7 +58,7 @@ bitflags! {
     /// # Examples
     ///
     /// ```
-    /// use iracing::telemetry::CameraState;
+    /// use iracing::states::CameraState;
     ///
     /// let very_scenic = CameraState::UI_HIDDEN | CameraState::IS_SCENIC_ACTIVE;
     /// ```

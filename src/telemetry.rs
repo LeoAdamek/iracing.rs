@@ -1,36 +1,29 @@
+use crate::session::*;
+use encoding::all::ISO_8859_1;
+use encoding::{DecoderTrap, Encoding};
+use libc::{c_char, c_void};
+use serde::{Deserialize, Serialize};
+use serde_yaml::from_str as yaml_from;
 use std::convert::TryInto;
 use std::default::Default;
 use std::error::Error;
 use std::ffi::CStr;
 use std::fmt;
 use std::fmt::Display;
+use std::io::Result as IOResult;
+use std::mem::transmute;
 use std::os::windows::raw::HANDLE;
-use std::ptr::null;
 use std::slice::from_raw_parts;
 use std::time::Duration;
-
-use libc::c_char;
-use libc::c_void;
+use winapi::shared::minwindef::LPVOID;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::handleapi::CloseHandle;
+use winapi::um::memoryapi::{MapViewOfFile, OpenFileMappingW, FILE_MAP_READ};
 use winapi::um::minwinbase::LPSECURITY_ATTRIBUTES;
 use winapi::um::synchapi::{CreateEventW, ResetEvent, WaitForSingleObject};
 
-use serde::{Deserialize, Serialize};
-
-use crate::session::*;
-
-use encoding::all::ISO_8859_1;
-use encoding::{DecoderTrap, Encoding};
-use serde_yaml::from_str as yaml_from;
-use std::io::Result as IOResult;
-use std::mem::transmute;
-use std::sync::Mutex;
-use winapi::shared::minwindef::LPVOID;
-use winapi::um::memoryapi::{MapViewOfFile, OpenFileMappingW, FILE_MAP_READ};
-
 /// System path where the shared memory map is located.
-pub const TELEMETRY_PATH: &'static str = "Local\\IRSDKMemMapFileName";
+pub const TELEMETRY_PATH: &str = r"Local\IRSDKMemMapFileName";
 
 /// Magic number specifying an unlimited number of laps
 pub const UNLIMITED_LAPS: i32 = 32767;
@@ -38,7 +31,7 @@ pub const UNLIMITED_LAPS: i32 = 32767;
 /// Magic number specifying unlimited time
 pub const UNLIMITED_TIME: f32 = 604800.0;
 
-const DATA_EVENT_NAME: &'static str = "Local\\IRSDKDataValidEvent";
+const DATA_EVENT_NAME: &str = r"Local\IRSDKDataValidEvent";
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -66,7 +59,6 @@ pub struct Header {
 ///
 pub struct Blocking {
     origin: *const c_void,
-    values: Vec<ValueHeader>,
     header: Header,
     event_handle: HANDLE,
 }
@@ -127,32 +119,40 @@ pub struct Sample {
 ///
 /// ## Known, Expected Data Type
 /// ```
-/// use iracing::telemetry::Sample;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # use iracing::telemetry::{Connection, Value};
+/// # use std::time::Duration;
+/// # let sampler = Connection::new()?.blocking()?;
+/// # let sample = sampler.sample(Duration::from_millis(50))?;
+/// use std::convert::TryInto;
 ///
-/// let s: Sample = some_sample_getter();
-///
-/// let gear: i32 = s.get("Gear").unwrap().into();
+/// let gear: i32 = sample.get("Gear").unwrap().try_into().unwrap();
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// ## Unknown data type
 ///
 /// ```
-/// use iracing::telemtry::{Sample, Value};
-///
-/// let v: &'static str = some_input_for_var_name();
-/// let s: Sample = some_sample_getter();
-///
-/// match s.get(v) {
-///     None => println!("Didn't find that value");
-///     Some(value) => match {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// # use iracing::telemetry::{Connection, Value};
+/// # use std::time::Duration;
+/// # let sampler = Connection::new()?.blocking()?;
+/// # let sample = sampler.sample(Duration::from_millis(50))?;
+/// match sample.get("some_key") {
+///     Err(err) => println!("Didn't find that value: {}", err),
+///     Ok(value) => match value {
 ///         Value::CHAR(c) => println!("Value: {:x}", c),
-///         Value::BOOL(b) => println!("Yes") if b,
+///         Value::BOOL(b) => println!("Value: {}", if b { "True" } else { "False" }),
 ///         Value::INT(i) => println!("Value: {}", i),
 ///         Value::BITS(u) => println!("Value: 0x{:32b}", u),
-///         Value::FLOAT(f) | Value::DOUBLE(f) => println!("Value: {:.2}", f),
-///         _  => println!("Unknown Value")
+///         Value::FLOAT(f) => println!("Value: {:.2}", f),
+///         Value::DOUBLE(f) => println!("Value: {:.2}", f),
+///         _  => println!("Unknown Value"),
 ///     }
 /// };
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Value {
@@ -241,19 +241,19 @@ impl TryInto<f64> for Value {
     }
 }
 
-impl Into<bool> for Value {
-    fn into(self) -> bool {
-        match self {
-            Self::BOOL(b) => b,
+impl From<Value> for bool {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::BOOL(b) => b,
             _ => false,
         }
     }
 }
 
-impl Into<Vec<bool>> for Value {
-    fn into(self) -> Vec<bool> {
-        match self {
-            Self::BoolVec(b) => b,
+impl From<Value> for Vec<bool> {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::BoolVec(b) => b,
             _ => vec![false],
         }
     }
@@ -283,21 +283,6 @@ impl ValueHeader {
     pub fn unit(&self) -> String {
         let unit = unsafe { CStr::from_ptr(self._unit.as_ptr()) };
         unit.to_string_lossy().to_string()
-    }
-}
-
-// Workaround to handle cloning var descriptions which are [u8; 64] thus cannot be derived
-struct VarDescription([c_char; ValueHeader::MAX_VAR_DESCRIPTION_LENGTH]);
-
-impl Clone for VarDescription {
-    fn clone(&self) -> Self {
-        let mut new = VarDescription([0; ValueHeader::MAX_VAR_DESCRIPTION_LENGTH]);
-
-        for i in 1..ValueHeader::MAX_VAR_DESCRIPTION_LENGTH {
-            new.0[i] = self.0[i];
-        }
-
-        new
     }
 }
 
@@ -343,7 +328,7 @@ impl Header {
             }
         }
 
-        return (latest_tick, buffer);
+        (latest_tick, buffer)
     }
 
     fn var_buffer(&self, lb: ValueBuffer, from_loc: *const c_void) -> &[u8] {
@@ -359,7 +344,7 @@ impl Header {
 
         let content = unsafe { from_raw_parts(header_loc as *const ValueHeader, n_vars) };
 
-        content.clone()
+        content
     }
 
     pub fn telemetry(&self, from_loc: *const c_void) -> Result<Sample, Box<dyn std::error::Error>> {
@@ -378,9 +363,9 @@ impl Header {
 impl Sample {
     fn new(tick: i32, header: Vec<ValueHeader>, buffer: Vec<u8>) -> Self {
         Sample {
-            tick: tick,
+            tick,
             values: header,
-            buffer: buffer,
+            buffer,
         }
     }
 
@@ -396,10 +381,7 @@ impl Sample {
     ///
     /// Check if a given variable is available in the telemetry sample
     pub fn has(&self, name: &'static str) -> bool {
-        match self.header_for(name) {
-            Some(_) => true,
-            None => false,
-        }
+        self.header_for(name).is_some()
     }
 
     /// Gets all values in the same along with names and descriptions.
@@ -415,9 +397,9 @@ impl Sample {
             let val = self.value(v);
 
             ValueDescription {
-                name: v.name().to_owned(),
-                description: v.description().to_owned(),
-                unit: v.unit().to_owned(),
+                name: v.name(),
+                description: v.description(),
+                unit: v.unit(),
                 count: v.count as usize,
                 count_as_time: v.count_as_time,
                 value: val,
@@ -527,7 +509,7 @@ pub enum TelemetryError {
 impl Display for TelemetryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ABANDONED => write!(f, "{}", "Abandoned"),
+            Self::ABANDONED => write!(f, "Abandoned"),
             Self::TIMEOUT(ms) => write!(f, "Timeout after {}ms", ms),
             Self::UNKNOWN(v) => write!(f, "Unknown error code = {:x?}", v),
         }
@@ -538,8 +520,6 @@ impl Error for TelemetryError {}
 
 impl Blocking {
     pub fn new(location: *const c_void, head: Header) -> std::io::Result<Self> {
-        let values = head.get_var_header(location).to_vec();
-
         let mut event_name: Vec<u16> = DATA_EVENT_NAME.encode_utf16().collect();
         event_name.push(0);
 
@@ -547,7 +527,7 @@ impl Blocking {
 
         let handle: HANDLE = unsafe { CreateEventW(sc, 0, 0, event_name.as_ptr()) };
 
-        if null() == handle {
+        if handle.is_null() {
             let errno: i32 = unsafe { GetLastError() as i32 };
 
             return Err(std::io::Error::from_raw_os_error(errno));
@@ -556,7 +536,6 @@ impl Blocking {
         Ok(Blocking {
             origin: location,
             header: head,
-            values: values,
             event_handle: handle,
         })
     }
@@ -598,11 +577,14 @@ impl Blocking {
     /// # Examples
     ///
     /// ```
-    /// use iracing::Connection;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use iracing::telemetry::Connection;
     /// use std::time::Duration;
     ///
     /// let sampler = Connection::new()?.blocking()?;
-    /// let sample = sampler.get(Duration::from_millis(50))?;
+    /// let sample = sampler.sample(Duration::from_millis(50))?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn sample(&self, timeout: Duration) -> Result<Sample, Box<dyn Error>> {
         let wait_time: u32 = match timeout.as_millis().try_into() {
@@ -640,14 +622,12 @@ impl Blocking {
 /// # Examples
 ///
 /// ```
-/// use iracing::Connection;
+/// use iracing::telemetry::Connection;
 ///
 /// let _ = Connection::new().expect("Unable to find telemetry data");
 /// ```
 pub struct Connection {
-    mux: Mutex<()>,
     location: *mut c_void,
-    header: Header,
 }
 
 impl Connection {
@@ -662,7 +642,7 @@ impl Connection {
             mapping = OpenFileMappingW(FILE_MAP_READ, 0, path.as_ptr());
         };
 
-        if null() == mapping {
+        if mapping.is_null() {
             unsafe {
                 errno = GetLastError() as i32;
             }
@@ -676,7 +656,7 @@ impl Connection {
             view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
         }
 
-        if null() == view {
+        if view.is_null() {
             unsafe {
                 errno = GetLastError() as i32;
             }
@@ -684,13 +664,7 @@ impl Connection {
             return Err(std::io::Error::from_raw_os_error(errno));
         }
 
-        let header = unsafe { Self::read_header(view) };
-
-        return Ok(Connection {
-            mux: Mutex::default(),
-            location: view,
-            header: header,
-        });
+        Ok(Connection { location: view })
     }
 
     ///
@@ -698,22 +672,9 @@ impl Connection {
     ///
     /// Reads the data header from the shared memory map and returns a copy of the header
     /// which can be used safely elsewhere.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use iracing::Connection;
-    ///
-    /// let location_of_an_iracing_header: *const c_void;
-    /// let header = Connection::read_header(location_of_an_iracing_header);
-    ///
-    /// println!("Data Version: {}", header.version);
-    /// ```
-    pub unsafe fn read_header(from: *const c_void) -> Header {
+    unsafe fn read_header(from: *const c_void) -> Header {
         let raw_header: *const Header = transmute(from);
-        let h: Header = *raw_header;
-
-        h.clone()
+        *raw_header
     }
 
     ///
@@ -725,7 +686,7 @@ impl Connection {
     /// # Examples
     ///
     /// ```
-    /// use iracing::Connection;
+    /// use iracing::telemetry::Connection;
     ///
     /// match Connection::new().expect("Unable to open session").session_info() {
     ///     Ok(session) => println!("Track Name: {}", session.weekend.track_display_name),
@@ -760,9 +721,12 @@ impl Connection {
     /// # Examples
     ///
     /// ```
-    /// use iracing::Connection;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use iracing::telemetry::Connection;
     ///
     /// let sample = Connection::new()?.telemetry()?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn telemetry(&self) -> Result<Sample, Box<dyn std::error::Error>> {
         let header = unsafe { Self::read_header(self.location) };
@@ -778,11 +742,14 @@ impl Connection {
     /// # Examples
     ///
     /// ```
-    /// use iracing::Connection;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use iracing::telemetry::Connection;
     /// use std::time::Duration;
     ///
     /// let sampler = Connection::new()?.blocking()?;
-    /// let sample = sample.sample(Duration::from_millis(50))?;
+    /// let sample = sampler.sample(Duration::from_millis(50))?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn blocking(&self) -> IOResult<Blocking> {
         Blocking::new(self.location, unsafe { Self::read_header(self.location) })
