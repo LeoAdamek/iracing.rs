@@ -1,16 +1,15 @@
 use crate::session::*;
 use encoding_rs::mem::decode_latin1;
-use libc::{c_char, c_void};
 use serde::{Deserialize, Serialize};
 use serde_yaml::from_str as yaml_from;
 use std::convert::TryInto;
 use std::default::Default;
 use std::error::Error;
 use std::ffi::CStr;
-use std::fmt;
-use std::fmt::Display;
+use std::fmt::{self, Display};
 use std::io::Result as IOResult;
 use std::mem::transmute;
+use std::os::raw::{c_char, c_void};
 use std::os::windows::raw::HANDLE;
 use std::slice::from_raw_parts;
 use std::time::Duration;
