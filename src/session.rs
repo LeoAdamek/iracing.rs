@@ -161,7 +161,7 @@ pub struct Session {
     pub track_rubber_state: String,
 
     #[serde(rename = "ResultsPositions")]
-    pub results: Vec<SessionResult>,
+    pub results: Option<Vec<SessionResult>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
