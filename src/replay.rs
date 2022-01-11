@@ -96,7 +96,7 @@ impl Header {
         match NaiveDateTime::parse_from_str(timestamp_str.as_str(), "%Y-%m-%d %H:%M:%S") {
             Ok(val) => result.timestamp = val,
             Err(e) => {
-                println!("Error: {:?} / {}", e, e.to_string());
+                println!("Error: {:?} / {}", e, e);
                 return Err(IOError::new(ErrorKind::InvalidInput, e));
             }
         }
