@@ -1,6 +1,5 @@
 use crate::session::*;
-use encoding::all::ISO_8859_1;
-use encoding::{DecoderTrap, Encoding};
+use encoding_rs::mem::decode_latin1;
 use libc::{c_char, c_void};
 use serde::{Deserialize, Serialize};
 use serde_yaml::from_str as yaml_from;
@@ -269,20 +268,19 @@ impl ValueHeader {
     const MAX_VAR_DESCRIPTION_LENGTH: usize = 64;
 
     /// Convert the name from a c_char[32] to a rust String
-    /// Expect that we won't have any encoding issues as the values should always be ASCII
     pub fn name(&self) -> String {
         let name = unsafe { CStr::from_ptr(self._name.as_ptr()) };
-        name.to_string_lossy().to_string()
+        decode_latin1(name.to_bytes()).to_string()
     }
 
     pub fn description(&self) -> String {
         let description = unsafe { CStr::from_ptr(self._description.as_ptr()) };
-        description.to_string_lossy().to_string()
+        decode_latin1(description.to_bytes()).to_string()
     }
 
     pub fn unit(&self) -> String {
         let unit = unsafe { CStr::from_ptr(self._unit.as_ptr()) };
-        unit.to_string_lossy().to_string()
+        decode_latin1(unit.to_bytes()).to_string()
     }
 }
 
@@ -701,16 +699,11 @@ impl Connection {
 
         let data: &[u8] = unsafe { from_raw_parts(start, size) };
 
-        // Decode the data as ISO-8859-1 (Rust wants UTF-8)
-        let content: String = match ISO_8859_1.decode(data, DecoderTrap::Strict) {
-            Ok(value) => value,
-            Err(e) => return Err(Box::from(e)),
-        };
+        // Decode the data as Latin-1 (Rust wants UTF-8)
+        let content = decode_latin1(data);
+        let details = yaml_from(&content)?;
 
-        match yaml_from(content.as_str()) {
-            Ok(session) => Ok(session),
-            Err(e) => Err(Box::from(e)),
-        }
+        Ok(details)
     }
 
     ///
