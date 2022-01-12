@@ -52,6 +52,26 @@ pub struct Header {
     buffers: [ValueBuffer; 4], // Data buffers
 }
 
+impl Default for Header {
+    fn default() -> Self {
+        Self {
+            version: 0,
+            status: 0,
+            tick_rate: 0,
+            session_info_version: 0,
+            session_info_length: 0,
+            session_info_offset: 0,
+            n_vars: 0,
+            header_offset: 0,
+            n_buffers: 0,
+            buffer_length: 0,
+            padding: [0u32; 2],
+            buffers: [ ValueBuffer::default(); 4 ]
+        }
+    }
+}
+
+
 /// Blocking telemetry interface
 ///
 /// Calling `sample()` on a Blocking interface will block until a new telemetry sample is made available.
@@ -62,7 +82,7 @@ pub struct Blocking {
     event_handle: HANDLE,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
 struct ValueBuffer {
     pub ticks: i32,        // Tick count
@@ -658,7 +678,6 @@ impl Connection {
             unsafe {
                 errno = GetLastError() as i32;
             }
-
             return Err(std::io::Error::from_raw_os_error(errno));
         }
 
@@ -670,9 +689,15 @@ impl Connection {
     ///
     /// Reads the data header from the shared memory map and returns a copy of the header
     /// which can be used safely elsewhere.
-    unsafe fn read_header(from: *const c_void) -> Header {
-        let raw_header: *const Header = transmute(from);
-        *raw_header
+    fn read_header(from: *const c_void) -> Header {
+        let mut header = Header::default();
+
+        unsafe {
+            let raw_header: *const Header = transmute(from);
+            std::ptr::copy(raw_header, &mut header, 1);
+        }
+
+        header
     }
 
     ///
@@ -692,7 +717,7 @@ impl Connection {
     /// };
     /// ```
     pub fn session_info(&mut self) -> Result<SessionDetails, Box<dyn std::error::Error>> {
-        let header = unsafe { Self::read_header(self.location) };
+        let header = Self::read_header(self.location);
 
         let start = (self.location as usize + header.session_info_offset as usize) as *const u8;
         let size = header.session_info_length as usize;
@@ -722,7 +747,7 @@ impl Connection {
     /// # }
     /// ```
     pub fn telemetry(&self) -> Result<Sample, Box<dyn std::error::Error>> {
-        let header = unsafe { Self::read_header(self.location) };
+        let header = Self::read_header(self.location);
         header.telemetry(self.location as *const std::ffi::c_void)
     }
 
