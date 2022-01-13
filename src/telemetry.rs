@@ -14,12 +14,11 @@ use std::mem::transmute;
 use std::os::windows::raw::HANDLE;
 use std::slice::from_raw_parts;
 use std::time::Duration;
-use winapi::shared::minwindef::LPVOID;
+use winapi::shared::minwindef::{LPVOID, DWORD};
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::handleapi::CloseHandle;
 use winapi::um::memoryapi::{MapViewOfFile, OpenFileMappingW, FILE_MAP_READ};
-use winapi::um::minwinbase::LPSECURITY_ATTRIBUTES;
-use winapi::um::synchapi::{CreateEventW, ResetEvent, WaitForSingleObject};
+use winapi::um::synchapi::{OpenEventW, ResetEvent, WaitForSingleObject};
 
 /// System path where the shared memory map is located.
 pub const TELEMETRY_PATH: &str = r"Local\IRSDKMemMapFileName";
@@ -31,6 +30,8 @@ pub const UNLIMITED_LAPS: i32 = 32767;
 pub const UNLIMITED_TIME: f32 = 604800.0;
 
 const DATA_EVENT_NAME: &str = r"Local\IRSDKDataValidEvent";
+
+const ACCESS_SYNCHRONIZE: DWORD = 0x00100000;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -78,7 +79,6 @@ impl Default for Header {
 ///
 pub struct Blocking {
     origin: *const c_void,
-    header: Header,
     event_handle: HANDLE,
 }
 
@@ -537,13 +537,11 @@ impl Display for TelemetryError {
 impl Error for TelemetryError {}
 
 impl Blocking {
-    pub fn new(location: *const c_void, head: Header) -> std::io::Result<Self> {
+    pub fn new(location: *const c_void) -> std::io::Result<Self> {
         let mut event_name: Vec<u16> = DATA_EVENT_NAME.encode_utf16().collect();
         event_name.push(0);
 
-        let sc: LPSECURITY_ATTRIBUTES = unsafe { std::mem::zeroed() };
-
-        let handle: HANDLE = unsafe { CreateEventW(sc, 0, 0, event_name.as_ptr()) };
+        let handle: HANDLE = unsafe { OpenEventW(ACCESS_SYNCHRONIZE, 0, event_name.as_ptr()) };
 
         if handle.is_null() {
             let errno: i32 = unsafe { GetLastError() as i32 };
@@ -553,7 +551,6 @@ impl Blocking {
 
         Ok(Blocking {
             origin: location,
-            header: head,
             event_handle: handle,
         })
     }
@@ -623,7 +620,13 @@ impl Blocking {
             0x00 => {
                 // OK
                 unsafe { ResetEvent(self.event_handle) };
-                self.header.telemetry(self.origin)
+
+                let mut header = Header::default();
+                unsafe {
+                    let raw_header: *const Header = transmute(self.origin);
+                    std::ptr::copy(raw_header, &mut header, 1);
+                }
+                header.telemetry(self.origin as *const std::ffi::c_void)
             }
             _ => Err(Box::new(TelemetryError::UNKNOWN(signal as u32))),
         }
@@ -770,7 +773,7 @@ impl Connection {
     /// # }
     /// ```
     pub fn blocking(&self) -> IOResult<Blocking> {
-        Blocking::new(self.location, unsafe { Self::read_header(self.location) })
+        Blocking::new(self.location)
     }
 
     pub fn close(&self) -> IOResult<()> {
