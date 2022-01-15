@@ -33,7 +33,7 @@ const DATA_EVENT_NAME: &str = r"Local\IRSDKDataValidEvent";
 
 const ACCESS_SYNCHRONIZE: DWORD = 0x00100000;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
 pub struct Header {
     pub version: i32,              // Telemetry version
@@ -53,38 +53,18 @@ pub struct Header {
     buffers: [ValueBuffer; 4], // Data buffers
 }
 
-impl Default for Header {
-    fn default() -> Self {
-        Self {
-            version: 0,
-            status: 0,
-            tick_rate: 0,
-            session_info_version: 0,
-            session_info_length: 0,
-            session_info_offset: 0,
-            n_vars: 0,
-            header_offset: 0,
-            n_buffers: 0,
-            buffer_length: 0,
-            padding: [0u32; 2],
-            buffers: [ ValueBuffer::default(); 4 ]
-        }
-    }
-}
-
-
 /// Blocking telemetry interface
 ///
 /// Calling `sample()` on a Blocking interface will block until a new telemetry sample is made available.
 ///
-pub struct Blocking {
-    origin: *const c_void,
+pub struct Blocking<'conn> {
+    conn: &'conn Connection,
     event_handle: HANDLE,
 }
 
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
-struct ValueBuffer {
+pub struct ValueBuffer {
     pub ticks: i32,        // Tick count
     pub offset: i32,       // Offset
     pub padding: [u32; 2], // (16-byte align) Padding
@@ -104,7 +84,7 @@ struct ValueHeader {
     _unit: [c_char; ValueHeader::MAX_VAR_NAME_LENGTH],               // Value units
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ValueDescription {
     pub value: Value,
     pub count: usize,
@@ -186,6 +166,13 @@ pub enum Value {
     FloatVec(Vec<f32>),
     BoolVec(Vec<bool>),
 }
+
+impl Default for Value {
+    fn default() -> Self {
+        Self::UNKNOWN(())
+    }
+}
+
 
 impl From<i32> for Value {
     fn from(v: i32) -> Value {
@@ -335,7 +322,7 @@ impl fmt::Debug for ValueHeader {
 }
 
 impl Header {
-    fn latest_buffer(&self) -> (i32, ValueBuffer) {
+    pub fn latest_buffer(&self) -> (i32, ValueBuffer) {
         let mut latest_tick: i32 = 0;
         let mut buffer = self.buffers[0];
 
@@ -365,24 +352,13 @@ impl Header {
         content
     }
 
-    pub fn telemetry(&self, from_loc: *const c_void) -> Result<Sample, Box<dyn std::error::Error>> {
-        let (tick, vbh) = self.latest_buffer();
-        let value_buffer = self.var_buffer(vbh, from_loc);
-        let value_header = self.get_var_header(from_loc);
-
-        Ok(Sample::new(
-            tick,
-            value_header.to_vec(),
-            value_buffer.to_vec(),
-        ))
-    }
 }
 
 impl Sample {
-    fn new(tick: i32, header: Vec<ValueHeader>, buffer: Vec<u8>) -> Self {
+    fn new(tick: i32, values: Vec<ValueHeader>, buffer: Vec<u8>) -> Self {
         Sample {
             tick,
-            values: header,
+            values,
             buffer,
         }
     }
@@ -536,8 +512,8 @@ impl Display for TelemetryError {
 
 impl Error for TelemetryError {}
 
-impl Blocking {
-    pub fn new(location: *const c_void) -> std::io::Result<Self> {
+impl<'conn> Blocking<'conn> {
+    pub fn new(source: &'conn Connection) -> std::io::Result<Self> {
         let mut event_name: Vec<u16> = DATA_EVENT_NAME.encode_utf16().collect();
         event_name.push(0);
 
@@ -550,15 +526,12 @@ impl Blocking {
         }
 
         Ok(Blocking {
-            origin: location,
+            conn: source,
             event_handle: handle,
         })
     }
 
     pub fn close(&self) -> std::io::Result<()> {
-        if self.event_handle.is_null() {
-            return Ok(());
-        }
 
         let succ = unsafe { CloseHandle(self.event_handle) };
 
@@ -568,11 +541,7 @@ impl Blocking {
             return Err(std::io::Error::from_raw_os_error(err));
         }
 
-        if self.origin.is_null() {
-            return Ok(());
-        }
-
-        let succ = unsafe { CloseHandle(self.origin as HANDLE) };
+        let succ = unsafe { CloseHandle(self.event_handle as HANDLE) };
 
         if succ == 0 {
             let err: i32 = unsafe { GetLastError() as i32 };
@@ -620,13 +589,7 @@ impl Blocking {
             0x00 => {
                 // OK
                 unsafe { ResetEvent(self.event_handle) };
-
-                let mut header = Header::default();
-                unsafe {
-                    let raw_header: *const Header = transmute(self.origin);
-                    std::ptr::copy(raw_header, &mut header, 1);
-                }
-                header.telemetry(self.origin as *const std::ffi::c_void)
+                self.conn.telemetry()
             }
             _ => Err(Box::new(TelemetryError::UNKNOWN(signal as u32))),
         }
@@ -692,11 +655,11 @@ impl Connection {
     ///
     /// Reads the data header from the shared memory map and returns a copy of the header
     /// which can be used safely elsewhere.
-    fn read_header(from: *const c_void) -> Header {
+    fn read_header(&self) -> Header {
         let mut header = Header::default();
 
         unsafe {
-            let raw_header: *const Header = transmute(from);
+            let raw_header = self.location as *const Header;
             std::ptr::copy(raw_header, &mut header, 1);
         }
 
@@ -720,7 +683,7 @@ impl Connection {
     /// };
     /// ```
     pub fn session_info(&mut self) -> Result<SessionDetails, Box<dyn std::error::Error>> {
-        let header = Self::read_header(self.location);
+        let header = self.read_header();
 
         let start = (self.location as usize + header.session_info_offset as usize) as *const u8;
         let size = header.session_info_length as usize;
@@ -750,8 +713,16 @@ impl Connection {
     /// # }
     /// ```
     pub fn telemetry(&self) -> Result<Sample, Box<dyn std::error::Error>> {
-        let header = Self::read_header(self.location);
-        header.telemetry(self.location as *const std::ffi::c_void)
+        let header = self.read_header();
+        let (tick, vbh) = header.latest_buffer();
+        let value_buffer = self.var_buffer(header, vbh);
+        let value_header = self.get_var_header(header, vbh);
+
+        Ok(Sample::new(
+            tick,
+            value_header.to_vec(),
+            value_buffer.to_vec()
+        ))
     }
 
     ///
@@ -773,7 +744,7 @@ impl Connection {
     /// # }
     /// ```
     pub fn blocking(&self) -> IOResult<Blocking> {
-        Blocking::new(self.location)
+        Blocking::new(self)
     }
 
     pub fn close(&self) -> IOResult<()> {
@@ -786,6 +757,23 @@ impl Connection {
 
             Err(std::io::Error::from_raw_os_error(errno))
         }
+    }
+
+    fn var_buffer(&self, header: Header, lb: ValueBuffer) -> &[u8] {
+        let sz = header.buffer_length as usize;
+
+        let buffer_loc = self.location as usize + lb.offset as usize;
+        unsafe { from_raw_parts(buffer_loc as *const u8, sz) }
+    }
+
+    fn get_var_header(&self, header: Header, buffer: ValueBuffer) -> &[ValueHeader] {
+        let n_vars = header.n_vars as usize;
+        let origin = self.location as usize;
+        let header_loc = origin + buffer.offset as usize;
+
+        let content = unsafe { from_raw_parts(header_loc as *const ValueHeader, n_vars) };
+
+        content
     }
 }
 
