@@ -270,6 +270,9 @@ pub struct Driver {
 
     pub team_name: String,
 
+    #[serde(rename = "CarNumber")]
+    pub display_number: String,
+
     #[serde(rename = "CarNumberRaw")]
     pub car_number: i64,
 
