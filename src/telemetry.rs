@@ -2,23 +2,24 @@ use crate::session::*;
 use encoding_rs::mem::decode_latin1;
 use serde::{Deserialize, Serialize};
 use serde_yaml::from_str as yaml_from;
+use std::borrow::Cow;
 use std::convert::TryInto;
 use std::default::Default;
-use std::error::Error;
 use std::ffi::CStr;
-use std::fmt::{self, Display};
+use std::fmt;
 use std::io::Result as IOResult;
-use std::mem::transmute;
+use std::marker::PhantomData;
 use std::os::raw::{c_char, c_void};
 use std::os::windows::raw::HANDLE;
 use std::slice::from_raw_parts;
 use std::time::Duration;
+use thiserror::Error;
 use winapi::shared::minwindef::LPVOID;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::handleapi::CloseHandle;
-use winapi::um::memoryapi::{MapViewOfFile, OpenFileMappingW, FILE_MAP_READ};
-use winapi::um::minwinbase::LPSECURITY_ATTRIBUTES;
-use winapi::um::synchapi::{CreateEventW, ResetEvent, WaitForSingleObject};
+use winapi::um::memoryapi::{MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, FILE_MAP_READ};
+use winapi::um::synchapi::{OpenEventW, ResetEvent, WaitForSingleObject};
+use winapi::um::winnt::SYNCHRONIZE;
 
 /// System path where the shared memory map is located.
 pub const TELEMETRY_PATH: &str = r"Local\IRSDKMemMapFileName";
@@ -55,10 +56,10 @@ pub struct Header {
 ///
 /// Calling `sample()` on a Blocking interface will block until a new telemetry sample is made available.
 ///
-pub struct Blocking {
+pub struct Blocking<'conn> {
     origin: *const c_void,
-    header: Header,
     event_handle: HANDLE,
+    phantom: PhantomData<&'conn Connection>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -120,7 +121,8 @@ pub struct Sample {
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # use iracing::telemetry::{Connection, Value};
 /// # use std::time::Duration;
-/// # let sampler = Connection::new()?.blocking()?;
+/// # let conn = Connection::new()?;
+/// # let sampler = conn.blocking()?;
 /// # let sample = sampler.sample(Duration::from_millis(50))?;
 /// use std::convert::TryInto;
 ///
@@ -135,7 +137,8 @@ pub struct Sample {
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// # use iracing::telemetry::{Connection, Value};
 /// # use std::time::Duration;
-/// # let sampler = Connection::new()?.blocking()?;
+/// # let conn = Connection::new()?;
+/// # let sampler = conn.blocking()?;
 /// # let sample = sampler.sample(Duration::from_millis(50))?;
 /// match sample.get("some_key") {
 ///     Err(err) => println!("Didn't find that value: {}", err),
@@ -194,47 +197,47 @@ impl Value {
 }
 
 impl TryInto<i32> for Value {
-    type Error = &'static str;
+    type Error = ValueError;
 
     fn try_into(self) -> Result<i32, Self::Error> {
         match self {
             Self::INT(n) => Ok(n),
-            _ => Err("Value is not a signed 4-byte integer"),
+            _ => Err(ValueError::TryInto("Value is not a signed 4-byte integer")),
         }
     }
 }
 
 impl TryInto<u32> for Value {
-    type Error = &'static str;
+    type Error = ValueError;
 
     fn try_into(self) -> Result<u32, Self::Error> {
         match self {
             Self::INT(n) => Ok(n as u32),
             Self::BITS(n) => Ok(n),
-            _ => Err("Value is not a 4-byte integer"),
+            _ => Err(ValueError::TryInto("Value is not a 4-byte integer")),
         }
     }
 }
 
 impl TryInto<f32> for Value {
-    type Error = &'static str;
+    type Error = ValueError;
 
     fn try_into(self) -> Result<f32, Self::Error> {
         match self {
             Self::FLOAT(n) => Ok(n),
-            _ => Err("Value is not a float"),
+            _ => Err(ValueError::TryInto("Value is not a float")),
         }
     }
 }
 
 impl TryInto<f64> for Value {
-    type Error = &'static str;
+    type Error = ValueError;
 
     fn try_into(self) -> Result<f64, Self::Error> {
         match self {
             Self::DOUBLE(n) => Ok(n),
             Self::FLOAT(f) => Ok(f as f64),
-            _ => Err("Value is not a float or double"),
+            _ => Err(ValueError::TryInto("Value is not a float or double")),
         }
     }
 }
@@ -301,7 +304,7 @@ impl Default for ValueHeader {
 }
 
 impl fmt::Debug for ValueHeader {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "ValueHeader(name=\"{}\", type={}, count={}, offset={})",
@@ -315,10 +318,15 @@ impl fmt::Debug for ValueHeader {
 
 impl Header {
     fn latest_buffer(&self) -> (i32, ValueBuffer) {
-        let mut latest_tick: i32 = 0;
         let mut buffer = self.buffers[0];
+        let mut latest_tick = buffer.ticks;
 
-        for b in self.buffers.iter() {
+        for b in self
+            .buffers
+            .iter()
+            .skip(1)
+            .take((self.n_buffers - 1) as usize)
+        {
             if b.ticks > latest_tick {
                 buffer = *b;
                 latest_tick = b.ticks;
@@ -344,16 +352,12 @@ impl Header {
         content
     }
 
-    pub fn telemetry(&self, from_loc: *const c_void) -> Result<Sample, Box<dyn std::error::Error>> {
+    fn telemetry(&self, from_loc: *const c_void) -> Sample {
         let (tick, vbh) = self.latest_buffer();
         let value_buffer = self.var_buffer(vbh, from_loc);
         let value_header = self.get_var_header(from_loc);
 
-        Ok(Sample::new(
-            tick,
-            value_header.to_vec(),
-            value_buffer.to_vec(),
-        ))
+        Sample::new(tick, value_header.to_vec(), value_buffer.to_vec())
     }
 }
 
@@ -418,9 +422,9 @@ impl Sample {
     ///
     /// `name`  Name of the telemetry variable to get
     ///   - see the iRacing Telemtry documentation for a complete list of possible values
-    pub fn get(&self, name: &'static str) -> Result<Value, String> {
+    pub fn get(&self, name: &'static str) -> Result<Value, SampleError> {
         match self.header_for(name) {
-            None => Err(format!("No value '{}' found", name)),
+            None => Err(SampleError::NoValue(format!("No value '{}' found", name))),
             Some(vh) => Ok(self.value(&vh)),
         }
     }
@@ -434,8 +438,7 @@ impl Sample {
 
         let raw_val = &self.buffer[vs..ve];
 
-        let v: Value;
-        v = match vt {
+        let v: Value = match vt {
             Value::INT(_) => {
                 if vc == 1 {
                     Value::INT(i32::from_le_bytes(raw_val.try_into().unwrap()))
@@ -471,7 +474,7 @@ impl Sample {
             }
             Value::DOUBLE(_) => Value::DOUBLE(f64::from_le_bytes(raw_val.try_into().unwrap())),
             Value::BITS(_) => Value::BITS(u32::from_le_bytes(raw_val.try_into().unwrap())),
-            Value::CHAR(_) => Value::CHAR(raw_val[0] as u8),
+            Value::CHAR(_) => Value::CHAR(raw_val[0]),
             Value::BOOL(_) => {
                 if vc == 1 {
                     Value::BOOL(raw_val[0] > 0)
@@ -492,77 +495,81 @@ impl Sample {
     }
 }
 
-///
-/// Telemetry Error
-///
 /// An error which occurs when telemetry samples cannot be read from the memory buffer.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TelemetryError {
-    ABANDONED,
-    TIMEOUT(usize),
-    UNKNOWN(u32),
+    #[error("Invalid duration: {0}")]
+    InvalidDuration(#[from] std::num::TryFromIntError),
+
+    #[error("Windows Mutex was abandoned.")]
+    Abandoned,
+
+    #[error("Timeout elapsed while waiting for a signal. Duration={0}")]
+    Timeout(usize),
+
+    #[error("Unknown error occurred: {0}")]
+    Unknown(u32),
+
+    #[error("Wait failed: {0}")]
+    WaitFailed(std::io::Error),
 }
 
-impl Display for TelemetryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ABANDONED => write!(f, "Abandoned"),
-            Self::TIMEOUT(ms) => write!(f, "Timeout after {}ms", ms),
-            Self::UNKNOWN(v) => write!(f, "Unknown error code = {:x?}", v),
-        }
-    }
+/// An error which occurs while retrieving session info.
+#[derive(Debug, Error)]
+pub enum SessionError {
+    #[error("Text decode error: {0}")]
+    Decode(Cow<'static, str>),
+
+    #[error("YAML parse error: {0}")]
+    ParseYAML(#[from] serde_yaml::Error),
 }
 
-impl Error for TelemetryError {}
+/// An error which occurs when value conversions fail.
+#[derive(Debug, Error)]
+pub enum ValueError {
+    #[error("{0}")]
+    TryInto(&'static str),
+}
 
-impl Blocking {
-    pub fn new(location: *const c_void, head: Header) -> std::io::Result<Self> {
+/// An error which may occur when reading values from a sample.
+#[derive(Debug, Error)]
+pub enum SampleError {
+    #[error("{0}")]
+    NoValue(String),
+}
+
+impl Blocking<'_> {
+    fn new(location: *const c_void) -> std::io::Result<Self> {
         let mut event_name: Vec<u16> = DATA_EVENT_NAME.encode_utf16().collect();
         event_name.push(0);
 
-        let sc: LPSECURITY_ATTRIBUTES = unsafe { std::mem::zeroed() };
+        let handle = unsafe {
+            let handle: HANDLE = OpenEventW(SYNCHRONIZE, 0, event_name.as_ptr());
 
-        let handle: HANDLE = unsafe { CreateEventW(sc, 0, 0, event_name.as_ptr()) };
+            if handle.is_null() {
+                let errno = GetLastError() as i32;
+                return Err(std::io::Error::from_raw_os_error(errno));
+            }
 
-        if handle.is_null() {
-            let errno: i32 = unsafe { GetLastError() as i32 };
-
-            return Err(std::io::Error::from_raw_os_error(errno));
-        }
+            handle
+        };
 
         Ok(Blocking {
             origin: location,
-            header: head,
             event_handle: handle,
+            phantom: PhantomData,
         })
     }
 
-    pub fn close(&self) -> std::io::Result<()> {
-        if self.event_handle.is_null() {
-            return Ok(());
-        }
-
-        let succ = unsafe { CloseHandle(self.event_handle) };
-
-        if succ == 0 {
-            let err: i32 = unsafe { GetLastError() as i32 };
-
-            return Err(std::io::Error::from_raw_os_error(err));
-        }
-
-        if self.origin.is_null() {
-            return Ok(());
-        }
-
-        let succ = unsafe { CloseHandle(self.origin as HANDLE) };
-
-        if succ == 0 {
-            let err: i32 = unsafe { GetLastError() as i32 };
-
-            Err(std::io::Error::from_raw_os_error(err))
-        } else {
-            Ok(())
-        }
+    /// Get the data header
+    ///
+    /// Reads the data header from the shared memory map and returns a copy of the header
+    /// which can be used safely elsewhere.
+    fn read_header(&self) -> Header {
+        let raw_header = self.origin as *const Header;
+        // SAFETY: This read CANNOT be done safely, since it is an unsynchronized clone of a struct
+        // larger than AtomicUsize.
+        unsafe { *raw_header }
     }
 
     ///
@@ -578,33 +585,48 @@ impl Blocking {
     /// use iracing::telemetry::Connection;
     /// use std::time::Duration;
     ///
-    /// let sampler = Connection::new()?.blocking()?;
+    /// let conn = Connection::new()?;
+    /// let sampler = conn.blocking()?;
     /// let sample = sampler.sample(Duration::from_millis(50))?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn sample(&self, timeout: Duration) -> Result<Sample, Box<dyn Error>> {
-        let wait_time: u32 = match timeout.as_millis().try_into() {
-            Ok(v) => v,
-            Err(e) => return Err(Box::new(e)),
-        };
+    pub fn sample(&self, timeout: Duration) -> Result<Sample, TelemetryError> {
+        let wait_time: u32 = timeout.as_millis().try_into()?;
 
-        let signal = unsafe { WaitForSingleObject(self.event_handle, wait_time) };
+        unsafe {
+            let signal = WaitForSingleObject(self.event_handle, wait_time);
 
-        match signal {
-            0x80 => Err(Box::new(TelemetryError::ABANDONED)), // Abandoned
-            0x102 => Err(Box::new(TelemetryError::TIMEOUT(wait_time as usize))), // Timeout
-            0xFFFFFFFF => {
-                // Error
-                let errno = unsafe { GetLastError() as i32 };
-                Err(Box::new(std::io::Error::from_raw_os_error(errno)))
+            match signal {
+                0x80 => Err(TelemetryError::Abandoned),
+                0x102 => Err(TelemetryError::Timeout(wait_time as usize)),
+                0xFFFFFFFF => {
+                    // Error
+                    let errno = std::io::Error::from_raw_os_error(GetLastError() as i32);
+                    Err(TelemetryError::WaitFailed(errno))
+                }
+                0x00 => {
+                    // OK
+                    ResetEvent(self.event_handle);
+                    Ok(self.read_header().telemetry(self.origin))
+                }
+                _ => Err(TelemetryError::Unknown(signal as u32)),
             }
-            0x00 => {
-                // OK
-                unsafe { ResetEvent(self.event_handle) };
-                self.header.telemetry(self.origin)
+        }
+    }
+}
+
+impl Drop for Blocking<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            let succ = CloseHandle(self.event_handle);
+            if succ == 0 {
+                let errno = GetLastError() as i32;
+                panic!(
+                    "Unable to close handle: {}",
+                    std::io::Error::from_raw_os_error(errno)
+                );
             }
-            _ => Err(Box::new(TelemetryError::UNKNOWN(signal as u32))),
         }
     }
 }
@@ -624,6 +646,7 @@ impl Blocking {
 /// let _ = Connection::new().expect("Unable to find telemetry data");
 /// ```
 pub struct Connection {
+    mapping: HANDLE,
     location: *mut c_void,
 }
 
@@ -632,36 +655,22 @@ impl Connection {
         let mut path: Vec<u16> = TELEMETRY_PATH.encode_utf16().collect();
         path.push(0);
 
-        let mapping: HANDLE;
-        let errno: i32;
-
         unsafe {
-            mapping = OpenFileMappingW(FILE_MAP_READ, 0, path.as_ptr());
-        };
-
-        if mapping.is_null() {
-            unsafe {
-                errno = GetLastError() as i32;
+            let mapping: HANDLE = OpenFileMappingW(FILE_MAP_READ, 0, path.as_ptr());
+            if mapping.is_null() {
+                let errno = GetLastError() as i32;
+                return Err(std::io::Error::from_raw_os_error(errno));
             }
 
-            return Err(std::io::Error::from_raw_os_error(errno));
-        }
-
-        let view: LPVOID;
-
-        unsafe {
-            view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
-        }
-
-        if view.is_null() {
-            unsafe {
-                errno = GetLastError() as i32;
+            let location: LPVOID = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+            if location.is_null() {
+                let errno = GetLastError() as i32;
+                CloseHandle(mapping); // Ignore return value; we are already handling another error.
+                return Err(std::io::Error::from_raw_os_error(errno));
             }
 
-            return Err(std::io::Error::from_raw_os_error(errno));
+            Ok(Connection { mapping, location })
         }
-
-        Ok(Connection { location: view })
     }
 
     ///
@@ -669,9 +678,11 @@ impl Connection {
     ///
     /// Reads the data header from the shared memory map and returns a copy of the header
     /// which can be used safely elsewhere.
-    unsafe fn read_header(from: *const c_void) -> Header {
-        let raw_header: *const Header = transmute(from);
-        *raw_header
+    fn read_header(&self) -> Header {
+        let raw_header = self.location as *const Header;
+        // SAFETY: This read CANNOT be done safely, since it is an unsynchronized clone of a struct
+        // larger than AtomicUsize.
+        unsafe { *raw_header }
     }
 
     ///
@@ -690,8 +701,8 @@ impl Connection {
     ///     Err(e) => println!("Invalid Session")
     /// };
     /// ```
-    pub fn session_info(&mut self) -> Result<SessionDetails, Box<dyn std::error::Error>> {
-        let header = unsafe { Self::read_header(self.location) };
+    pub fn session_info(&self) -> Result<SessionDetails, SessionError> {
+        let header = self.read_header();
 
         let start = (self.location as usize + header.session_info_offset as usize) as *const u8;
         let size = header.session_info_length as usize;
@@ -713,15 +724,15 @@ impl Connection {
     /// # Examples
     ///
     /// ```
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # fn main() -> Result<(), std::io::Error> {
     /// use iracing::telemetry::Connection;
     ///
-    /// let sample = Connection::new()?.telemetry()?;
+    /// let sample = Connection::new()?.telemetry();
     /// # Ok(())
     /// # }
     /// ```
-    pub fn telemetry(&self) -> Result<Sample, Box<dyn std::error::Error>> {
-        let header = unsafe { Self::read_header(self.location) };
+    pub fn telemetry(&self) -> Sample {
+        let header = self.read_header();
         header.telemetry(self.location as *const std::ffi::c_void)
     }
 
@@ -738,24 +749,38 @@ impl Connection {
     /// use iracing::telemetry::Connection;
     /// use std::time::Duration;
     ///
-    /// let sampler = Connection::new()?.blocking()?;
+    /// let conn = Connection::new()?;
+    /// let sampler = conn.blocking()?;
     /// let sample = sampler.sample(Duration::from_millis(50))?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn blocking(&self) -> IOResult<Blocking> {
-        Blocking::new(self.location, unsafe { Self::read_header(self.location) })
+    pub fn blocking(&self) -> IOResult<Blocking<'_>> {
+        Blocking::new(self.location)
     }
+}
 
-    pub fn close(&self) -> IOResult<()> {
-        let succ = unsafe { CloseHandle(self.location) };
+impl Drop for Connection {
+    fn drop(&mut self) {
+        unsafe {
+            let succ = UnmapViewOfFile(self.location);
+            if succ == 0 {
+                let errno = GetLastError() as i32;
+                CloseHandle(self.mapping); // Ignore return value; we are already handling another error.
+                panic!(
+                    "Unable to unmap file: {}",
+                    std::io::Error::from_raw_os_error(errno)
+                );
+            }
 
-        if succ != 0 {
-            Ok(())
-        } else {
-            let errno: i32 = unsafe { GetLastError() as i32 };
-
-            Err(std::io::Error::from_raw_os_error(errno))
+            let succ = CloseHandle(self.mapping);
+            if succ == 0 {
+                let errno = GetLastError() as i32;
+                panic!(
+                    "Unable to close handle: {}",
+                    std::io::Error::from_raw_os_error(errno)
+                );
+            }
         }
     }
 }
@@ -774,14 +799,8 @@ mod tests {
 
     #[test]
     fn test_latest_telemetry() {
-        let session_tick: u32 = Connection::new()
+        let session_tick: Sample = Connection::new()
             .expect("Unable to open telemetry")
-            .telemetry()
-            .expect("Couldn't get latest telem")
-            .get("SessionTick")
-            .unwrap()
-            .try_into()
-            .unwrap();
-        assert!(session_tick > 0);
+            .telemetry();
     }
 }

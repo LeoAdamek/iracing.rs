@@ -4,8 +4,7 @@ use std::convert::TryInto;
 use std::time::Duration;
 
 pub fn main() {
-    let mut conn = Connection::new().expect("Unable to open telemetry");
-
+    let conn = Connection::new().expect("Unable to open telemetry");
     let session = conn.session_info().expect("Invalid Session");
 
     let shift_up_rpm = session.drivers.shift_light_shift_rpm;

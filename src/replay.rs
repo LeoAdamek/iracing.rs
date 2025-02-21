@@ -3,7 +3,6 @@ use std::io;
 use std::io::Read;
 use std::io::Result as IOResult;
 use std::io::{Error as IOError, ErrorKind};
-use std::u32;
 
 /// Magic number found at the start of replay files
 pub const FILE_MAGIC: &[u8] = b"YLPR";
@@ -170,7 +169,7 @@ fn read_str<R: Read>(mut reader: R, length: usize) -> IOResult<String> {
         .position(|&b| b == 0)
         .expect("Given string does not terminate within given length");
 
-    Ok(String::from_utf8((&raw_string_bytes[..nul]).to_vec()).unwrap())
+    Ok(String::from_utf8((raw_string_bytes[..nul]).to_vec()).unwrap())
 }
 
 impl<R: Read> Replay<R> {
